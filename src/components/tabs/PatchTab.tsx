@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../ui/GlassCard';
-import { Layout, Edit2, Zap, Plus, Trash2, X, Check, Users } from 'lucide-react';
+import { Layout, Edit2, Zap, Plus, Trash2, X, Check, Users, FileText, FolderOpen, Copy, Clipboard } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/tauri';
+import { open } from '@tauri-apps/api/dialog';
+import { ValuePromptModal } from '../ui/ValuePromptModal';
 
 interface PatchTabProps {
   fixtures: any[];
@@ -44,13 +47,29 @@ export const PatchTab = ({
     address: 1
   });
 
-  // Charger la bibliothèque
+  // Liens PDF personnalisés (stockés par ID de fixture)
+  const [customPdfLinks, setCustomPdfLinks] = useState<Record<number, string>>({});
+  const [copiedPdfLink, setCopiedPdfLink] = useState<string | null>(null);
+  const [contextMenuFixtureId, setContextMenuFixtureId] = useState<number | null>(null);
+
+  // Charger la bibliothèque et les liens PDF
   useEffect(() => {
-    const savedLib = localStorage.getItem('dmx_fixture_library');
+    const savedLib = localStorage.getItem('fixture_profiles');
     if (savedLib) {
       setLibrary(JSON.parse(savedLib));
     }
+
+    const savedPdfLinks = localStorage.getItem('dmx_custom_pdf_links');
+    if (savedPdfLinks) {
+      setCustomPdfLinks(JSON.parse(savedPdfLinks));
+    }
   }, []);
+
+  const savePdfLink = (fixtureId: number, filename: string) => {
+    const newLinks = { ...customPdfLinks, [fixtureId]: filename };
+    setCustomPdfLinks(newLinks);
+    localStorage.setItem('dmx_custom_pdf_links', JSON.stringify(newLinks));
+  };
 
   const getFixtureColor = (type: string) => {
     switch (type) {
@@ -131,8 +150,99 @@ export const PatchTab = ({
     }
   };
 
+  const handleOpenPdf = async (fixture: any) => {
+    // Si un lien personnalisé existe pour cet ID, on l'utilise, sinon on génère le nom par défaut
+    const customLink = customPdfLinks[fixture.id];
+    const filename = customLink || `${fixture.manufacturer}_${fixture.model}`.replace(/\s+/g, '_') + '.pdf';
+    
+    try {
+      await invoke('open_pdf', { filename });
+    } catch (error) {
+      console.error("Erreur lors de l'ouverture du PDF:", error);
+      alert(`Impossible d'ouvrir le PDF "${filename}" pour ${fixture.manufacturer} ${fixture.model}. Vérifiez que le fichier est présent dans le dossier resources/pdfs/ de l'application.`);
+    }
+  };
+
+  const handlePdfContextMenu = async (e: React.MouseEvent, fixtureId: number) => {
+    e.preventDefault();
+    setContextMenuFixtureId(fixtureId);
+  };
+
+  const handleSelectFile = async (fixtureId: number) => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Documentation PDF',
+          extensions: ['pdf']
+        }]
+      });
+      
+      if (selected && typeof selected === 'string') {
+        savePdfLink(fixtureId, selected);
+      }
+      setContextMenuFixtureId(null);
+    } catch (error) {
+      console.error("Erreur lors de la sélection du fichier:", error);
+    }
+  };
+
+  const handleCopyLink = (fixtureId: number) => {
+    const link = customPdfLinks[fixtureId];
+    if (link) {
+      setCopiedPdfLink(link);
+    }
+    setContextMenuFixtureId(null);
+  };
+
+  const handlePasteLink = (fixtureId: number) => {
+    if (copiedPdfLink) {
+      savePdfLink(fixtureId, copiedPdfLink);
+    }
+    setContextMenuFixtureId(null);
+  };
+
+  const handleOpenFolder = async () => {
+    try {
+      await invoke('open_pdf_folder');
+    } catch (error) {
+      console.error("Erreur lors de l'ouverture du dossier:", error);
+    }
+  };
+
   return (
-    <div className="grid grid-cols-12 gap-8 h-[calc(100vh-200px)]">
+    <div className="flex flex-col h-full">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+            <Layout className="w-8 h-8 text-cyan-500" />
+            Patch <span className="text-cyan-500/50">Manager</span>
+          </h1>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Configuration des projecteurs et adresses DMX</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleOpenFolder}
+            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-2xl text-slate-300 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
+            title="Ouvrir le dossier des notices PDF"
+          >
+            <FolderOpen className="w-4 h-4" />
+            Dossier PDF
+          </button>
+          <button 
+            onClick={() => {
+              setActiveSubTab('fixtures');
+              setIsAdding(true);
+            }}
+            className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-black rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Ajouter un projecteur
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-12 gap-8 flex-1">
       {/* Moniteur DMX 512 Canaux */}
       <div className="col-span-8 flex flex-col h-full">
         <GlassCard title="Moniteur DMX (512 Canaux)" icon={Layout} className="flex-1 overflow-hidden flex flex-col">
@@ -161,8 +271,8 @@ export const PatchTab = ({
                     </div>
                   )}
                   
-                  <span className={`text-[10px] font-bold leading-none mb-1 ${fixtureAtAddr ? 'text-white/40' : 'opacity-30'}`}>{channelNum}</span>
-                  <span className={`text-xs font-mono font-black leading-none ${fixtureAtAddr ? 'text-white' : ''}`}>{val}</span>
+                  <span className={`text-[12px] font-black leading-none mb-1.5 ${fixtureAtAddr ? 'text-white/60' : 'opacity-40'}`}>{channelNum}</span>
+                  <span className={`text-sm font-mono font-black leading-none ${fixtureAtAddr ? 'text-white' : ''}`}>{val}</span>
                 </div>
               );
             })}
@@ -275,6 +385,51 @@ export const PatchTab = ({
                       <p className="text-[10px] text-slate-500 mt-1">{fixture.manufacturer} {fixture.model}</p>
                     </div>
                     <div className="flex gap-1">
+                      <div className="relative">
+                        <button 
+                          onClick={() => handleOpenPdf(fixture)}
+                          onContextMenu={(e) => handlePdfContextMenu(e, fixture.id)}
+                          className={`p-2 bg-slate-800 hover:bg-white/10 border rounded-xl transition-all ${customPdfLinks[fixture.id] ? 'text-cyan-400 border-cyan-500/30' : 'text-slate-500 border-white/10 hover:text-cyan-400'}`}
+                          title={customPdfLinks[fixture.id] ? `Notice: ${customPdfLinks[fixture.id]} (Clic droit pour options)` : "Voir la documentation PDF (Clic droit pour options)"}
+                        >
+                          <FileText className="w-3 h-3" />
+                        </button>
+
+                        {/* MENU CONTEXTUEL PDF */}
+                        {contextMenuFixtureId === fixture.id && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setContextMenuFixtureId(null)} />
+                            <div className="absolute right-0 top-full mt-2 w-48 bg-[#1a1d23] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+                              <button 
+                                onClick={() => handleSelectFile(fixture.id)}
+                                className="w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-300 hover:bg-cyan-500 hover:text-black transition-all flex items-center gap-3 border-b border-white/5"
+                              >
+                                <FolderOpen className="w-3.5 h-3.5" />
+                                Sélectionner
+                              </button>
+                              
+                              <button 
+                                onClick={() => handleCopyLink(fixture.id)}
+                                disabled={!customPdfLinks[fixture.id]}
+                                className="w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-300 hover:bg-cyan-500 hover:text-black transition-all flex items-center gap-3 border-b border-white/5 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                Copier Lien
+                              </button>
+
+                              <button 
+                                onClick={() => handlePasteLink(fixture.id)}
+                                disabled={!copiedPdfLink}
+                                className="w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-300 hover:bg-cyan-500 hover:text-black transition-all flex items-center gap-3 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-300"
+                              >
+                                <Clipboard className="w-3.5 h-3.5" />
+                                Coller Lien
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      
                       <button 
                         onClick={() => onIdentify && onIdentify(fixture.id)}
                         className="p-2 bg-slate-800 hover:bg-white/10 border border-white/10 rounded-xl text-slate-500 hover:text-white transition-all"
@@ -458,6 +613,7 @@ export const PatchTab = ({
           </GlassCard>
         )}
       </div>
+    </div>
     </div>
   );
 };

@@ -136,8 +136,8 @@ const DmxChannelSlider = React.memo(({
           />
         </div>
         <span className="text-[9px] font-mono font-black text-cyan-400">{localVal}</span>
-        <span className="text-[7px] font-black uppercase tracking-tighter text-slate-500 max-w-[40px] truncate">{label}</span>
-        <span className="text-[6px] font-mono text-slate-600">CH{chAddr}</span>
+        <span className="text-[9px] font-black uppercase tracking-tighter text-slate-500 max-w-[40px] truncate">{label}</span>
+        <span className="text-[8px] font-mono font-black text-slate-500">CH{chAddr}</span>
       </div>
 
       <ValuePromptModal

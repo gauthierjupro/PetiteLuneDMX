@@ -374,6 +374,87 @@ pub fn set_sound_to_light(state: tauri::State<AppState>, active: bool) -> Result
 }
 
 #[tauri::command]
+pub fn open_pdf_folder(handle: tauri::AppHandle) -> Result<(), String> {
+    let resource_path = handle.path_resolver()
+        .resolve_resource("resources/pdfs/")
+        .ok_or_else(|| "Impossible de trouver le chemin des ressources".to_string())?;
+
+    if !resource_path.exists() {
+        std::fs::create_dir_all(&resource_path).map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&resource_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_pdf(handle: tauri::AppHandle, filename: String) -> Result<(), String> {
+    // Si c'est un chemin absolu (commence par une lettre de lecteur ou /)
+    let path = if filename.contains(':') || filename.starts_with('/') || filename.starts_with('\\') {
+        std::path::PathBuf::from(&filename)
+    } else {
+        // Sinon c'est un fichier dans les ressources
+        handle.path_resolver()
+            .resolve_resource(format!("resources/pdfs/{}", filename))
+            .ok_or_else(|| "Impossible de trouver le chemin des ressources".to_string())?
+    };
+
+    if !path.exists() {
+        return Err(format!("Le fichier {} n'existe pas.", path.display()));
+    }
+
+    // Ouvrir le PDF avec l'application par défaut du système
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path.to_string_lossy()])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&resource_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&resource_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn apply_preset(state: tauri::State<AppState>, universe_data: Vec<u8>, fade_time_ms: Option<u32>) -> Result<(), String> {
     if universe_data.len() != DMX_CHANNELS {
         return Err("Taille de preset invalide".to_string());

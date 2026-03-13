@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "PetiteLuneDMX",
-    "version": "1.2.0"
+    "version": "1.2.1"
   },
   "tauri": {
     "allowlist": {
@@ -20,7 +20,10 @@
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.petitelune.dmx"
+      "identifier": "com.petitelune.dmx",
+      "resources": [
+        "resources/pdfs/*"
+      ]
     },
     "security": {
       "csp": null

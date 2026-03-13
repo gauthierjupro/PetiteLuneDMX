@@ -848,13 +848,6 @@ export const LiveTab = ({
           fixtures={fixtures}
         />
 
-        {/* SECTION RYTHME ET EFFETS */}
-        <RythmeSection 
-          fixtures={fixtures}
-          channels={channels}
-          updateDmx={updateDmx}
-        />
-
         {/* SECTION MOUVEMENTS */}
         <MovementSection 
           groups={groups}
@@ -867,11 +860,20 @@ export const LiveTab = ({
           groupColors={groupColors}
           groupIntensities={groupIntensities}
           currentMasterIntensity={currentMasterIntensity}
-          isPulseActive={isPulseActive}
-          isAutoColorActive={isAutoColorActive}
+          groupPulseActive={groupPulseActive}
+          groupAutoColorActive={groupAutoColorActive}
           sendIntensity={sendIntensity}
           sendColor={sendColor}
           handleMacro={handleMacro}
+          onStrobeEdit={onStrobeEdit}
+          groupStrobeValues={groupStrobeValues}
+          channels={channels}
+          updateDmx={updateDmx}
+        />
+
+        {/* SECTION RYTHME ET EFFETS */}
+        <RythmeSection 
+          fixtures={fixtures}
           channels={channels}
           updateDmx={updateDmx}
         />

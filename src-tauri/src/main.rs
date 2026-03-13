@@ -64,6 +64,8 @@ fn main() {
             dmx_engine::get_motion_cycle_index,
             dmx_engine::apply_preset,
             dmx_engine::stop_engine,
+            dmx_engine::open_pdf,
+            dmx_engine::open_pdf_folder,
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors du lancement de l'application Tauri");
