@@ -11,7 +11,8 @@ import {
   Move,
   Sliders,
   Maximize2,
-  Box
+  Box,
+  Info
 } from 'lucide-react';
 
 import fixturesData from './data/fixtures_patch.json';
@@ -26,10 +27,12 @@ import { DmxConsoleTab } from './components/tabs/DmxConsoleTab';
 import { StageTab } from './components/tabs/StageTab';
 import { FixtureEditorTab } from './components/tabs/FixtureEditorTab';
 import { GlassCard } from './components/ui/GlassCard';
+import { AboutModal } from './components/ui/AboutModal';
 
 type TabType = 'live' | 'fixtures' | 'effects' | 'patch' | 'console' | 'stage' | 'editor' | 'settings';
 
 function App() {
+  const APP_VERSION = "1.2.0";
   const [channels, setChannels] = useState<number[]>(Array(512).fill(0));
   const [isConnected, setIsConnected] = useState(false);
   const [pan, setPan] = useState(127);
@@ -39,6 +42,7 @@ function App() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [selectedPort, setSelectedPort] = useState('COM3');
   const [selectedFixtures, setSelectedFixtures] = useState<number[]>([]);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   
   // Initialisation des fixtures depuis localStorage ou données par défaut
   const [fixtures, setFixtures] = useState(() => {
@@ -257,11 +261,22 @@ function App() {
       
       {/* Header */}
       <header className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-white to-slate-500 bg-clip-text text-transparent">
-            PETITELUNE<span className="text-cyan-500">DMX</span>
-          </h1>
-          <p className="text-slate-500 text-sm mt-1 font-medium">Professional Lighting Control v1.0</p>
+        <div className="flex items-center gap-6">
+          <div>
+            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-white to-slate-500 bg-clip-text text-transparent">
+              PETITELUNE<span className="text-cyan-500">DMX</span>
+            </h1>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">Pro Lighting Control v{APP_VERSION}</p>
+              <button 
+                onClick={() => setIsAboutModalOpen(true)}
+                className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-slate-500 hover:text-cyan-400 transition-all active:scale-90"
+                title="Informations sur l'application"
+              >
+                <Info className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
         
         <nav className="flex bg-slate-900/50 backdrop-blur-md p-1.5 rounded-2xl border border-white/5 gap-1">
@@ -410,6 +425,12 @@ function App() {
           </div>
         )}
       </main>
+      {/* Modale À Propos */}
+      <AboutModal 
+        isOpen={isAboutModalOpen} 
+        onClose={() => setIsAboutModalOpen(false)} 
+        version={APP_VERSION} 
+      />
     </div>
   );
 }

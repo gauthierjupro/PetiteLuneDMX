@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Sun, Save } from 'lucide-react';
 import { Tooltip } from '../../ui/Tooltip';
 import { MasterAmbianceCard } from './MasterAmbianceCard';
 import { AmbianceCard } from './AmbianceCard';
+import { ValuePromptModal } from '../../ui/ValuePromptModal';
 
 interface AmbianceSectionProps {
   ambianceGroups: any[];
@@ -63,8 +64,11 @@ export const AmbianceSection = ({
   channels,
   fixtures
 }: AmbianceSectionProps) => {
+  const [isFadeModalOpen, setIsFadeModalOpen] = useState(false);
+
   return (
-    <section className="space-y-4">
+    <>
+      <section className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-sm font-black text-cyan-400 uppercase tracking-widest flex items-center gap-2">
@@ -93,31 +97,32 @@ export const AmbianceSection = ({
           {/* CARTE MASTER */}
           {linkedGroups.length >= 1 && (
             <MasterAmbianceCard 
-              linkedCount={linkedGroups.length}
-              intensity={groupIntensities[linkedGroups[0]] || { dim: 255, str: 0 }}
-              color={groupColors[linkedGroups[0]] || { r: 255, g: 255, b: 255 }}
-              isAutoActive={isAmbianceAutoColorActive}
-              isPulseActive={isAmbiancePulseActive}
-              activeMacro={activeMacro}
-              onIntensityChange={(type, val) => sendIntensity(getLinkedFixtureIds(), type, val)}
-              onColorChange={(r, g, b) => sendColor(getLinkedFixtureIds(), r, g, b)}
-              onMacro={(macro) => handleMacro(getLinkedFixtureIds(), macro)}
-              onStrobeContextMenu={() => onStrobeEdit(null)}
-              onUserColorEdit={(id) => onUserColorEdit(id, null)}
-              userColors={getGroupUserColors('master')}
-              strobeShortcutVal={groupStrobeValues['master'] || 128}
-              currentMasterIntensity={currentMasterIntensity}
-              channels={channels}
-              fixtures={fixtures}
-              linkedGroups={linkedGroups}
-            />
-          )}
-
-          {ambianceGroups.map(group => (
-            <AmbianceCard 
-              key={group.id}
-              group={group}
-              intensity={groupIntensities[group.id] || { dim: 255, str: 0 }}
+                linkedCount={linkedGroups.length}
+                intensity={groupIntensities[linkedGroups[0]] || { dim: 255, str: 0 }}
+                color={groupColors[linkedGroups[0]] || { r: 255, g: 255, b: 255 }}
+                isAutoActive={isAmbianceAutoColorActive}
+                isPulseActive={isAmbiancePulseActive}
+                activeMacro={activeMacro}
+                onIntensityChange={(type, val) => sendIntensity(getLinkedFixtureIds(), type, val)}
+                onColorChange={(r, g, b) => sendColor(getLinkedFixtureIds(), r, g, b, undefined, isAmbianceAutoColorActive)}
+                onMacro={(macro) => handleMacro(getLinkedFixtureIds(), macro)}
+                onStrobeContextMenu={() => onStrobeEdit(null)}
+                onUserColorEdit={(id) => onUserColorEdit(id, 'master')}
+                userColors={getGroupUserColors('master')}
+                strobeShortcutVal={groupStrobeValues['master'] || 128}
+                currentMasterIntensity={currentMasterIntensity}
+                channels={channels}
+                fixtures={fixtures}
+                linkedGroups={linkedGroups}
+              />
+            )}
+            
+            {/* CARTES INDIVIDUELLES */}
+            {ambianceGroups.map(group => (
+              <AmbianceCard 
+                key={group.id}
+                group={group}
+                intensity={groupIntensities[group.id] || { dim: 255, str: 0 }}
               color={groupColors[group.id] || { r: 255, g: 255, b: 255 }}
               isAutoActive={groupAutoColorActive[group.id]}
               isPulseActive={groupPulseActive[group.id]}
@@ -146,7 +151,10 @@ export const AmbianceSection = ({
               </h3>
               <span className="text-[11px] font-black font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">{fadeTime}s</span>
             </div>
-            <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded-xl border border-white/5">
+            <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded-xl border border-white/5" onContextMenu={(e) => {
+              e.preventDefault();
+              setIsFadeModalOpen(true);
+            }}>
               <span className="text-[9px] font-black text-slate-500 uppercase shrink-0">Fade</span>
               <input 
                 type="range" min="0" max="10" step="0.5" 
@@ -188,5 +196,18 @@ export const AmbianceSection = ({
         </div>
       </div>
     </section>
-  );
+
+    <ValuePromptModal
+      isOpen={isFadeModalOpen}
+      onClose={() => setIsFadeModalOpen(false)}
+      onSubmit={(input) => {
+        const val = parseFloat(input);
+        if (!isNaN(val)) setFadeTime(Math.min(10, Math.max(0, val)));
+      }}
+      title="Temps de fondu"
+      defaultValue={fadeTime.toString()}
+      label="Entrez le temps de fondu (0-10s) :"
+    />
+  </>
+);
 };
