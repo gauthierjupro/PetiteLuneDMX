@@ -1,0 +1,20 @@
+[package]
+name = "petitelunedmx-tauri"
+version = "1.0.0"
+description = "Contrôleur DMX Moderne avec Tauri et React"
+authors = ["PetiteLune"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = [ "api-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serialport = "4.2"
+
+[features]
+# default enables all the tauri features
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

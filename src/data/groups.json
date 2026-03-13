@@ -1,0 +1,24 @@
+[
+  {
+    "id": "floods",
+    "name": "Floods Stairville",
+    "fixtureIds": [0, 1, 2, 3],
+    "isAmbiance": true
+  },
+  {
+    "id": "party_spots",
+    "name": "Eurolite Spots",
+    "fixtureIds": [4, 5, 6, 7],
+    "isAmbiance": true
+  },
+  {
+    "id": "lyres",
+    "name": "Lyres PicoSpot",
+    "fixtureIds": [8, 9]
+  },
+  {
+    "id": "lasers",
+    "name": "Lasers",
+    "fixtureIds": [16, 17]
+  }
+]

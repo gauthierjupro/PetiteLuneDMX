@@ -1,0 +1,164 @@
+[
+  {
+    "id": 0,
+    "name": "LED Flood Panel 150 [1]",
+    "manufacturer": "Stairville",
+    "model": "LED Flood Panel 150",
+    "address": 41,
+    "channels": 8,
+    "type": "RGB"
+  },
+  {
+    "id": 1,
+    "name": "LED Flood Panel 150 [2]",
+    "manufacturer": "Stairville",
+    "model": "LED Flood Panel 150",
+    "address": 57,
+    "channels": 8,
+    "type": "RGB"
+  },
+  {
+    "id": 2,
+    "name": "LED Flood Panel 150 [3]",
+    "manufacturer": "Stairville",
+    "model": "LED Flood Panel 150",
+    "address": 153,
+    "channels": 8,
+    "type": "RGB"
+  },
+  {
+    "id": 3,
+    "name": "LED Flood Panel 150 [4]",
+    "manufacturer": "Stairville",
+    "model": "LED Flood Panel 150",
+    "address": 152,
+    "channels": 8,
+    "type": "RGB"
+  },
+  {
+    "id": 4,
+    "name": "LED PARty TCL spot [5]",
+    "manufacturer": "Eurolite",
+    "model": "LED PARty TCL spot",
+    "address": 33,
+    "channels": 5,
+    "type": "RGB"
+  },
+  {
+    "id": 5,
+    "name": "LED PARty TCL spot [6]",
+    "manufacturer": "Eurolite",
+    "model": "LED PARty TCL spot",
+    "address": 49,
+    "channels": 5,
+    "type": "RGB"
+  },
+  {
+    "id": 6,
+    "name": "LED PARty TCL spot [7]",
+    "manufacturer": "Eurolite",
+    "model": "LED PARty TCL spot",
+    "address": 129,
+    "channels": 5,
+    "type": "RGB"
+  },
+  {
+    "id": 7,
+    "name": "LED PARty TCL spot [8]",
+    "manufacturer": "Eurolite",
+    "model": "LED PARty TCL spot",
+    "address": 137,
+    "channels": 5,
+    "type": "RGB"
+  },
+  {
+    "id": 8,
+    "name": "PicoSpot 20 [9]",
+    "manufacturer": "Fun-Generation",
+    "model": "PicoSpot 20",
+    "address": 80,
+    "channels": 9,
+    "type": "Moving Head"
+  },
+  {
+    "id": 9,
+    "name": "PicoSpot 20 [10]",
+    "manufacturer": "Fun-Generation",
+    "model": "PicoSpot 20",
+    "address": 176,
+    "channels": 9,
+    "type": "Moving Head"
+  },
+  {
+    "id": 10,
+    "name": "Xtrem LED [11]",
+    "manufacturer": "BoomToneDJ",
+    "model": "Xtrem LED",
+    "address": 1,
+    "channels": 6,
+    "type": "Effect"
+  },
+  {
+    "id": 11,
+    "name": "Xtrem LED [12]",
+    "manufacturer": "BoomToneDJ",
+    "model": "Xtrem LED",
+    "address": 8,
+    "channels": 6,
+    "type": "Effect"
+  },
+  {
+    "id": 12,
+    "name": "Gigabar II [13]",
+    "manufacturer": "Varytec",
+    "model": "Gigabar II",
+    "address": 201,
+    "channels": 5,
+    "type": "RGB"
+  },
+  {
+    "id": 13,
+    "name": "Gigabar II [14]",
+    "manufacturer": "Varytec",
+    "model": "Gigabar II",
+    "address": 225,
+    "channels": 5,
+    "type": "RGB"
+  },
+  {
+    "id": 14,
+    "name": "Dynamo Scan LED [15]",
+    "manufacturer": "BoomToneDJ",
+    "model": "Dynamo Scan LED",
+    "address": 300,
+    "channels": 9,
+    "type": "Moving Head"
+  },
+  {
+    "id": 15,
+    "name": "Dynamo Scan LED [16]",
+    "manufacturer": "BoomToneDJ",
+    "model": "Dynamo Scan LED",
+    "address": 309,
+    "channels": 9,
+    "type": "Moving Head"
+  },
+  {
+    "id": 16,
+    "name": "Cameo WOOKIE 200 R [17]",
+    "manufacturer": "Cameo",
+    "model": "WOOKIE 200 R",
+    "address": 17,
+    "channels": 9,
+    "type": "Laser"
+  },
+  {
+    "id": 17,
+    "name": "Ibiza LAS-30G (Laser)",
+    "manufacturer": "Ibiza",
+    "model": "LAS-30G",
+    "address": 113,
+    "channels": 5,
+    "type": "Laser"
+  }
+]
