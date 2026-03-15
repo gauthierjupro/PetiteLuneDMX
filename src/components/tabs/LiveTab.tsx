@@ -76,12 +76,13 @@ interface LiveTabProps {
   bpm: number;
   setBpm: React.Dispatch<React.SetStateAction<any>>;
   groupMovements: Record<string, { 
-    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep', 
+    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep' | 'custom', 
     speed: number, 
     sizePan: number,
     sizeTilt: number,
     fan: number,
-    invert180: boolean
+    invert180: boolean,
+    customPoints?: {x: number, y: number}[]
   }>;
   setGroupMovements: React.Dispatch<React.SetStateAction<any>>;
   groupPan: Record<string, number>;
@@ -96,16 +97,10 @@ interface LiveTabProps {
   setGroupGobos: React.Dispatch<React.SetStateAction<any>>;
   groupPositions: Record<string, { x: number, y: number, label: string }[]>;
   setGroupPositions: React.Dispatch<React.SetStateAction<any>>;
-  groupMovementPresets: Record<string, { 
-    shape: string,
-    speed: number,
-    sizePan: number,
-    sizeTilt: number,
-    fan: number,
-    invert180: boolean,
-    label: string 
-  }[]>;
+  groupMovementPresets: Record<string, { shape: string, speed: number, sizePan: number, sizeTilt: number, fan: number, invert180: boolean, label: string }[]>;
   setGroupMovementPresets: React.Dispatch<React.SetStateAction<any>>;
+  groupCustomTrajectories: Record<string, { id: string, label: string, points: {x: number, y: number}[] }[]>;
+  setGroupCustomTrajectories: React.Dispatch<React.SetStateAction<any>>;
   fixtureCalibration: Record<number, CalibrationSettings>;
   setFixtureCalibration: React.Dispatch<React.SetStateAction<any>>;
   liveGroupPositions: Record<string, { pan: number, tilt: number }>;
@@ -137,6 +132,7 @@ export const LiveTab = ({
   groupGobos, setGroupGobos,
   groupPositions, setGroupPositions,
   groupMovementPresets, setGroupMovementPresets,
+  groupCustomTrajectories, setGroupCustomTrajectories,
   fixtureCalibration, setFixtureCalibration,
   liveGroupPositions,
   liveGroupColors,
@@ -1015,6 +1011,11 @@ export const LiveTab = ({
               fixtureIds
             });
           }}
+          groupPositions={groupPositions}
+          groupMovementPresets={groupMovementPresets}
+          groupCustomTrajectories={groupCustomTrajectories}
+          setGroupCustomTrajectories={setGroupCustomTrajectories}
+          setGroupMovements={setGroupMovements}
         />
 
         <CalibrationModal 
@@ -1053,6 +1054,8 @@ export const LiveTab = ({
           setGroupPositions={setGroupPositions}
           groupMovementPresets={groupMovementPresets}
           setGroupMovementPresets={setGroupMovementPresets}
+          groupCustomTrajectories={groupCustomTrajectories}
+          setGroupCustomTrajectories={setGroupCustomTrajectories}
         />
 
         {/* SECTION RYTHME ET EFFETS */}

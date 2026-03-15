@@ -53,16 +53,30 @@ function App() {
 
   // --- États du Moteur DMX (Migrés de LiveTab pour tourner en arrière-plan) ---
   const [groupMovements, setGroupMovements] = useState<Record<string, { 
-    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep', 
+    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep' | 'custom', 
     speed: number, 
     sizePan: number,
     sizeTilt: number,
     fan: number,
-    invert180: boolean
+    invert180: boolean,
+    customPoints?: {x: number, y: number}[]
   }>>(() => {
     const saved = localStorage.getItem('dmx_group_movements');
     return saved ? JSON.parse(saved) : {};
   });
+
+  const [groupCustomTrajectories, setGroupCustomTrajectories] = useState<Record<string, {
+    id: string,
+    label: string,
+    points: {x: number, y: number}[]
+  }[]>>(() => {
+    const saved = localStorage.getItem('dmx_custom_trajectories');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dmx_custom_trajectories', JSON.stringify(groupCustomTrajectories));
+  }, [groupCustomTrajectories]);
 
   const [groupPan, setGroupPan] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('dmx_group_pan');
@@ -201,22 +215,20 @@ function App() {
   const updateDmx = async (ch: number, val: string | number) => {
     // On arrondit systématiquement à l'entier le plus proche (le DMX ne gère que 0-255)
     const rawVal = typeof val === 'string' ? parseFloat(val) : val;
-    const numVal = Math.round(rawVal);
+    const numVal = Math.round(Math.min(255, Math.max(0, rawVal)));
     
     // Mettre à jour l'état local immédiatement pour la vue DMX
     setChannels(prev => {
+      if (prev[ch] === numVal) return prev;
       const newChannels = [...prev];
-      if (newChannels[ch] !== numVal) {
-        newChannels[ch] = numVal;
-        return newChannels;
-      }
-      return prev;
+      newChannels[ch] = numVal;
+      return newChannels;
     });
 
     try {
       await invoke('update_dmx', { channel: ch + 1, value: numVal });
     } catch (e) {
-      console.error(e);
+      // Éviter de logguer en boucle les erreurs de port
     }
   };
 
@@ -422,6 +434,24 @@ function App() {
           case 'tilt_sweep':
             baseTiltOffset = Math.sin(basePhase) * sizeTilt;
             break;
+          case 'custom':
+            if (config.customPoints && config.customPoints.length > 1) {
+              const pts = config.customPoints;
+              const total = pts.length;
+              // On utilise un temps normalisé pour éviter les saccades en fin de boucle
+              const t = (basePhase % total);
+              const i = Math.floor(t);
+              const nextI = (i + 1) % total;
+              const frac = t - i;
+              
+              const p1 = pts[i];
+              const p2 = pts[nextI];
+              
+              // Interpolation linéaire continue
+              basePanOffset = (p1.x + (p2.x - p1.x) * frac - 127) * (config.sizePan / 128);
+              baseTiltOffset = (p1.y + (p2.y - p1.y) * frac - 127) * (config.sizeTilt / 128);
+            }
+            break;
         }
 
         newLivePositions[groupId] = {
@@ -451,6 +481,24 @@ function App() {
               case 'tilt_sweep':
                 tiltOffset = Math.sin(phase) * sizeTilt;
                 break;
+              case 'custom':
+                if (config.customPoints && config.customPoints.length > 1) {
+                  const pts = config.customPoints;
+                  const total = pts.length;
+                  // On utilise un temps normalisé pour éviter les saccades en fin de boucle
+                  const t = (phase % total);
+                  const i = Math.floor(t);
+                  const nextI = (i + 1) % total;
+                  const frac = t - i;
+                  
+                  const p1 = pts[i];
+                  const p2 = pts[nextI];
+                  
+                  // Interpolation linéaire continue
+                  panOffset = (p1.x + (p2.x - p1.x) * frac - 127) * (config.sizePan / 128);
+                  tiltOffset = (p1.y + (p2.y - p1.y) * frac - 127) * (config.sizeTilt / 128);
+                }
+                break;
             }
 
             if (config.invert180 && index % 2 !== 0) {
@@ -468,8 +516,9 @@ function App() {
             if (cal.invertPan) calPan = 255 - calPan;
             if (cal.invertTilt) calTilt = 255 - calTilt;
 
-            updateDmx(fixture.address - 1, calPan);
-            updateDmx(fixture.address + 1, calTilt);
+            // Utilisation d'un batch update ou invoke direct pour éviter la surcharge de l'état React
+            invoke('update_dmx', { channel: fixture.address, value: Math.round(calPan) }).catch(() => {});
+            invoke('update_dmx', { channel: fixture.address + 2, value: Math.round(calTilt) }).catch(() => {});
           }
         });
       });
@@ -714,6 +763,8 @@ function App() {
             setGroupPositions={setGroupPositions}
             groupMovementPresets={groupMovementPresets}
             setGroupMovementPresets={setGroupMovementPresets}
+            groupCustomTrajectories={groupCustomTrajectories}
+            setGroupCustomTrajectories={setGroupCustomTrajectories}
             fixtureCalibration={fixtureCalibration}
             setFixtureCalibration={setFixtureCalibration}
             liveGroupPositions={liveGroupPositions}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal } from '../../ui/Modal';
-import { Move, Square, FastForward, RotateCcw, Save, Edit2, Link2, Link2Off, RefreshCcw } from 'lucide-react';
+import { Move, Square, FastForward, RotateCcw, Save, Edit2, Link2, Link2Off, RefreshCcw, Plus, Trash2, Play, MousePointer2 } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 
@@ -11,15 +11,34 @@ interface EffectsModalProps {
   groupName: string;
   fixtureIds: number[];
   fixtures: any[];
-  groupMovements: Record<string, { shape: any, speed: number, sizePan: number, sizeTilt: number, fan: number, invert180: boolean }>;
+  groupMovements: Record<string, { 
+    shape: any, 
+    speed: number, 
+    sizePan: number, 
+    sizeTilt: number, 
+    fan: number, 
+    invert180: boolean,
+    customPoints?: {x: number, y: number}[] 
+  }>;
   setGroupMovements: (val: any) => void;
   groupPan: Record<string, number>;
   groupTilt: Record<string, number>;
   sendMovement: (ids: number[], x: number, y: number, gid: string) => void;
   groupPositions: Record<string, { x: number, y: number, label: string }[]>;
   setGroupPositions: (val: any) => void;
-  groupMovementPresets: Record<string, { shape: string, speed: number, sizePan: number, sizeTilt: number, fan: number, invert180: boolean, label: string }[]>;
+  groupMovementPresets: Record<string, { 
+    shape: string, 
+    speed: number, 
+    sizePan: number, 
+    sizeTilt: number, 
+    fan: number, 
+    invert180: boolean, 
+    label: string,
+    customPoints?: {x: number, y: number}[] 
+  }[]>;
   setGroupMovementPresets: (val: any) => void;
+  groupCustomTrajectories: Record<string, { id: string, label: string, points: {x: number, y: number}[] }[]>;
+  setGroupCustomTrajectories: (val: any) => void;
 }
 
 export const EffectsModal = ({
@@ -37,7 +56,9 @@ export const EffectsModal = ({
   groupPositions,
   setGroupPositions,
   groupMovementPresets,
-  setGroupMovementPresets
+  setGroupMovementPresets,
+  groupCustomTrajectories,
+  setGroupCustomTrajectories
 }: EffectsModalProps) => {
   const config = groupMovements[groupId] || { shape: 'none', speed: 128, sizePan: 64, sizeTilt: 64, fan: 0, invert180: false };
   const centerX = groupPan[groupId] ?? 127;
@@ -74,7 +95,12 @@ export const EffectsModal = ({
 
   const handleSaveMvtPreset = (index: number) => {
     const newPresets = [...mvtPresets];
-    newPresets[index] = { ...config, label: newPresets[index].label };
+    // On sauvegarde tout l'objet config actuel, y compris les customPoints si présents
+    newPresets[index] = { 
+      ...config, 
+      label: newPresets[index].label,
+      customPoints: config.shape === 'custom' ? localCustomPoints : (config.customPoints || [])
+    };
     setGroupMovementPresets((prev: any) => ({ ...prev, [groupId]: newPresets }));
   };
 
@@ -83,14 +109,20 @@ export const EffectsModal = ({
     setGroupMovements((prev: any) => ({
       ...prev,
       [groupId]: { 
+        ...prev[groupId],
         shape: preset.shape, 
         speed: preset.speed, 
         sizePan: preset.sizePan, 
         sizeTilt: preset.sizeTilt, 
         fan: preset.fan, 
-        invert180: preset.invert180 
+        invert180: preset.invert180,
+        customPoints: preset.customPoints || []
       }
     }));
+    // Si c'est un mouvement custom, on met à jour les points locaux pour le PAD
+    if (preset.shape === 'custom' && preset.customPoints) {
+      setLocalCustomPoints(preset.customPoints);
+    }
   };
 
   const handleRenameMvtPreset = (index: number) => {
@@ -105,8 +137,100 @@ export const EffectsModal = ({
   // Visualisation de la trajectoire sur le PAD
   const [previewOffset, setPreviewOffset] = React.useState({ x: 0, y: 0 });
 
+  // État pour le générateur de trajectoire personnalisée (Points)
+  const [localCustomPoints, setLocalCustomPoints] = React.useState<{x: number, y: number}[]>(config.customPoints || []);
+  const [isRecording, setIsRecording] = React.useState(false);
+  const [isEditMode, setIsEditMode] = React.useState(false);
+  const [selectedPointIndex, setSelectedPointIndex] = React.useState<number | null>(null);
+  // Point fantôme pour prévisualiser le futur point pendant l'enregistrement
+  const [phantomPoint, setPhantomPoint] = React.useState<{x: number, y: number} | null>(null);
+  const [trajMenu, setTrajMenu] = React.useState<{id: string, x: number, y: number} | null>(null);
+
+  const customTrajectories = groupCustomTrajectories[groupId] || [];
+
+  const handleAddPoint = () => {
+    if (phantomPoint) {
+      setLocalCustomPoints(prev => [...prev, phantomPoint]);
+      // Le prochain point fantôme sera au même endroit pour continuer
+      setSelectedPointIndex(null);
+    }
+  };
+
+  const handleUpdatePoint = (nx: number, ny: number) => {
+    if (selectedPointIndex !== null && isEditMode) {
+      const newPoints = [...localCustomPoints];
+      newPoints[selectedPointIndex] = { x: nx, y: ny };
+      setLocalCustomPoints(newPoints);
+      // On met à jour le moteur global pour que la trajectoire en cours de lecture
+      // prenne en compte la modification du point immédiatement
+      if (config.shape === 'custom') {
+        updateConfig({ shape: 'custom', customPoints: newPoints });
+      }
+      // On envoie la commande DMX uniquement si on n'est pas en train de lire
+      // (car si on lit, c'est le moteur principal qui pilote la lyre)
+      if (config.shape === 'none' && !isRecording) {
+        sendMovement(fixtureIds, nx, ny, groupId);
+      }
+    } else if (isRecording) {
+      setPhantomPoint({ x: nx, y: ny });
+      sendMovement(fixtureIds, nx, ny, groupId);
+    } else {
+      sendMovement(fixtureIds, nx, ny, groupId);
+    }
+  };
+
+  const handleInsertPoint = () => {
+    // Insère un point au centre après le point sélectionné ou à la fin
+    const insertIndex = selectedPointIndex !== null ? selectedPointIndex + 1 : localCustomPoints.length;
+    const newPoints = [...localCustomPoints];
+    newPoints.splice(insertIndex, 0, { x: 127, y: 127 });
+    setLocalCustomPoints(newPoints);
+    setSelectedPointIndex(insertIndex);
+    if (config.shape === 'custom') {
+      updateConfig({ shape: 'custom', customPoints: newPoints });
+    }
+  };
+
+  const handleSaveTrajectory = () => {
+    if (localCustomPoints.length < 2) return;
+    const name = prompt("Nom de la trajectoire :", `Trajet ${customTrajectories.length + 1}`);
+    if (!name) return;
+
+    const newTraj = {
+      id: Date.now().toString(),
+      label: name,
+      points: localCustomPoints
+    };
+
+    setGroupCustomTrajectories((prev: any) => ({
+      ...prev,
+      [groupId]: [...(prev[groupId] || []), newTraj]
+    }));
+    
+    updateConfig({ shape: 'custom', customPoints: localCustomPoints });
+  };
+
+  const handleLoadTrajectory = (traj: any) => {
+    setLocalCustomPoints(traj.points);
+    updateConfig({ shape: 'custom', customPoints: traj.points });
+    setSelectedPointIndex(null);
+  };
+
+  const handleDeleteTrajectory = (trajId: string) => {
+    setGroupCustomTrajectories((prev: any) => ({
+      ...prev,
+      [groupId]: (prev[groupId] || []).filter((t: any) => t.id !== trajId)
+    }));
+  };
+
   React.useEffect(() => {
     if (config.shape === 'none') {
+      setPreviewOffset({ x: 0, y: 0 });
+      return;
+    }
+
+    const pts = isRecording ? localCustomPoints : (config.customPoints || []);
+    if (config.shape === 'custom' && pts.length < 2) {
       setPreviewOffset({ x: 0, y: 0 });
       return;
     }
@@ -137,28 +261,65 @@ export const EffectsModal = ({
         case 'tilt_sweep':
           oy = Math.sin(phase) * sizeTilt;
           break;
+        case 'custom':
+          if (pts.length > 1) {
+            const total = pts.length;
+            const t = (phase % total);
+            const i = Math.floor(t);
+            const nextI = (i + 1) % total;
+            const frac = t - i;
+            
+            const p1 = pts[i];
+            const p2 = pts[nextI];
+            
+            ox = (p1.x + (p2.x - p1.x) * frac - 127) * (config.sizePan / 128);
+            oy = (p1.y + (p2.y - p1.y) * frac - 127) * (config.sizeTilt / 128);
+          }
+          break;
       }
       setPreviewOffset({ x: ox, y: oy });
     }, 40);
 
     return () => clearInterval(interval);
-  }, [config.shape, config.speed, config.sizePan, config.sizeTilt]);
+  }, [config.shape, config.speed, config.sizePan, config.sizeTilt, config.customPoints, localCustomPoints, isRecording]);
 
   const updateConfig = (newConfig: Partial<typeof config>) => {
     let finalConfig = { ...newConfig };
     
     if (isLinked) {
-      if ('sizePan' in newConfig) {
+      if ('sizePan' in newConfig && !('sizeTilt' in newConfig)) {
         finalConfig.sizeTilt = newConfig.sizePan;
-      } else if ('sizeTilt' in newConfig) {
+      } else if ('sizeTilt' in newConfig && !('sizePan' in newConfig)) {
         finalConfig.sizePan = newConfig.sizeTilt;
       }
     }
 
-    setGroupMovements((prev: any) => ({
+    setGroupMovements((prev: any) => {
+      const current = prev[groupId] || config;
+      return {
+        ...prev,
+        [groupId]: { ...current, ...finalConfig }
+      };
+    });
+  };
+
+  const handleRenameTrajectory = (trajId: string) => {
+    const traj = customTrajectories.find(t => t.id === trajId);
+    if (!traj) return;
+    const newName = prompt("Nouveau nom :", traj.label);
+    if (!newName) return;
+    setGroupCustomTrajectories((prev: any) => ({
       ...prev,
-      [groupId]: { ...config, ...finalConfig }
+      [groupId]: (prev[groupId] || []).map((t: any) => t.id === trajId ? { ...t, label: newName } : t)
     }));
+  };
+
+  const handleEditTrajectoryPoints = (trajId: string) => {
+    const traj = customTrajectories.find(t => t.id === trajId);
+    if (!traj) return;
+    handleLoadTrajectory(traj);
+    setIsEditMode(true);
+    setTrajMenu(null);
   };
 
   return (
@@ -166,9 +327,41 @@ export const EffectsModal = ({
       isOpen={isOpen} 
       onClose={onClose} 
       title={`GÉNÉRATEUR DE MOUVEMENTS : ${groupName}`}
-      maxWidth="max-w-5xl"
+      maxWidth="max-w-7xl"
     >
-      <div className="space-y-6 p-1">
+      <div 
+        className="relative space-y-6 p-2"
+        onClick={() => setTrajMenu(null)}
+      >
+        {/* Menu Contextuel pour la bibliothèque */}
+        {trajMenu && (
+          <div 
+            className="fixed z-[9999] bg-[#1a1d23] border border-white/10 rounded-xl shadow-2xl p-1.5 min-w-[120px]"
+            style={{ left: trajMenu.x, top: trajMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => handleEditTrajectoryPoints(trajMenu.id)}
+              className="w-full text-left px-3 py-2 hover:bg-blue-500/20 text-blue-400 text-[10px] font-black uppercase rounded-lg flex items-center gap-2 transition-all"
+            >
+              <Edit2 className="w-3 h-3" /> Modifier Points
+            </button>
+            <button 
+              onClick={() => { handleRenameTrajectory(trajMenu.id); setTrajMenu(null); }}
+              className="w-full text-left px-3 py-2 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase rounded-lg flex items-center gap-2 transition-all"
+            >
+              <Edit2 className="w-3 h-3" /> Renommer
+            </button>
+            <div className="h-px bg-white/5 my-1" />
+            <button 
+              onClick={() => { if(confirm("Supprimer ?")) { handleDeleteTrajectory(trajMenu.id); setTrajMenu(null); } }}
+              className="w-full text-left px-3 py-2 hover:bg-red-500/20 text-red-400 text-[10px] font-black uppercase rounded-lg flex items-center gap-2 transition-all"
+            >
+              <Trash2 className="w-3 h-3" /> Supprimer
+            </button>
+          </div>
+        )}
+
         {/* GÉNÉRATEUR DE MOUVEMENTS (Calculé par le logiciel) */}
         <div className="bg-[#111317] border border-blue-500/30 rounded-[2rem] p-6 space-y-6 relative overflow-hidden shadow-2xl">
           <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 blur-[80px] pointer-events-none" />
@@ -179,23 +372,24 @@ export const EffectsModal = ({
                 <Move className="w-6 h-6 text-blue-400" />
               </div>
               <div>
-                <h4 className="text-lg font-black text-blue-400 uppercase tracking-[0.2em]">Trajectoires</h4>
-                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Génération de formes pour {groupName}.</p>
+                <h4 className="text-xl font-black text-blue-400 uppercase tracking-[0.2em]">Trajectoires</h4>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">Génération de formes pour {groupName}.</p>
               </div>
             </div>
 
             <div className="flex gap-2">
               {[
-                { id: 'none', label: 'Aucun', icon: <Square className="w-3.5 h-3.5" /> },
-                { id: 'circle', label: 'Cercle', icon: <RotateCcw className="w-3.5 h-3.5" /> },
-                { id: 'eight', label: 'Huit', icon: <FastForward className="w-3.5 h-3.5" /> },
-                { id: 'pan_sweep', label: 'Pan', icon: <Move className="w-3.5 h-3.5" /> },
-                { id: 'tilt_sweep', label: 'Tilt', icon: <Move className="w-3.5 h-3.5 rotate-90" /> }
+                { id: 'none', label: 'Aucun', icon: <Square className="w-4 h-4" /> },
+                { id: 'circle', label: 'Cercle', icon: <RotateCcw className="w-4 h-4" /> },
+                { id: 'eight', label: 'Huit', icon: <FastForward className="w-4 h-4" /> },
+                { id: 'pan_sweep', label: 'Pan', icon: <Move className="w-4 h-4" /> },
+                { id: 'tilt_sweep', label: 'Tilt', icon: <Move className="w-4 h-4 rotate-90" /> },
+                { id: 'custom', label: 'Custom', icon: <MousePointer2 className="w-4 h-4" /> }
               ].map(shape => (
                 <button
                   key={shape.id}
                   onClick={() => updateConfig({ shape: shape.id })}
-                  className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
+                  className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
                     config.shape === shape.id
                     ? 'bg-blue-500 text-[#05070a] border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.3)]'
                     : 'bg-slate-800/50 text-slate-400 border-white/5 hover:text-white hover:bg-slate-700/50'
@@ -209,280 +403,442 @@ export const EffectsModal = ({
               
               <button
                 onClick={() => updateConfig({ invert180: !config.invert180 })}
-                className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
+                className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
                   config.invert180
                   ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]'
                   : 'bg-slate-800/50 text-slate-400 border-white/5 hover:text-white hover:bg-slate-700/50'
                 }`}
               >
-                <RotateCcw className={`w-3.5 h-3.5 ${config.invert180 ? 'rotate-180' : ''} transition-transform duration-500`} />
+                <RotateCcw className={`w-4 h-4 ${config.invert180 ? 'rotate-180' : ''} transition-transform duration-500`} />
                 Symétrie (180°)
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-12 gap-8 relative z-10">
-            {/* Colonne PAD (Visualisation et Centre) */}
-            <div className="col-span-5 flex flex-col items-center gap-4 p-5 bg-black/40 rounded-[1.5rem] border border-white/5 shadow-inner">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-blue-500/20 pb-1.5 w-full text-center">Centre & Aperçu</p>
+          <div className="grid grid-cols-12 gap-6 relative z-10">
+            {/* Colonne GAUCHE (PAD et Centre) */}
+            <div className="col-span-5 flex flex-col items-center gap-4 p-4 bg-black/40 rounded-[1.5rem] border border-white/5 shadow-inner">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-blue-500/20 pb-1.5 w-full text-center">Centre & Aperçu</p>
+              
               <div className="relative group/pad">
                 <XYPad 
-                  x={centerX} 
-                  y={centerY} 
-                  onChange={(nx, ny) => sendMovement(fixtureIds, nx, ny, groupId)}
-                  size={300}
+                  x={selectedPointIndex !== null ? localCustomPoints[selectedPointIndex].x : (phantomPoint ? phantomPoint.x : centerX)} 
+                  y={selectedPointIndex !== null ? localCustomPoints[selectedPointIndex].y : (phantomPoint ? phantomPoint.y : centerY)} 
+                  onChange={handleUpdatePoint}
+                  size={360}
                 />
                 
+                {/* Visualisation du point fantôme (en cours de placement) */}
+                {isRecording && phantomPoint && selectedPointIndex === null && (
+                  <div 
+                    className="absolute pointer-events-none w-4 h-4 rounded-full border border-blue-400 bg-blue-400/20 z-20 animate-pulse"
+                    style={{
+                      left: `${(phantomPoint.x / 255) * 360}px`,
+                      top: `${(phantomPoint.y / 255) * 360}px`,
+                      transform: 'translate(-50%, -50%)'
+                    }}
+                  >
+                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[11px] font-black text-blue-400 whitespace-nowrap">POINT {localCustomPoints.length + 1} ?</span>
+                  </div>
+                )}
+                
+                {/* Visualisation des points custom */}
+                {(isRecording || isEditMode || config.shape === 'custom' || localCustomPoints.length > 0) && (isRecording || isEditMode ? localCustomPoints : (config.customPoints || localCustomPoints)).map((p, i) => (
+                  <div 
+                    key={i}
+                    onClick={() => (isEditMode || isRecording) && setSelectedPointIndex(i)}
+                    className={`absolute cursor-pointer w-4 h-4 rounded-full border border-white/50 z-10 transition-all ${
+                      selectedPointIndex === i 
+                      ? 'bg-yellow-400 scale-150 shadow-[0_0_10px_yellow] z-30' 
+                      : isRecording || isEditMode ? 'bg-red-500 shadow-[0_0_5px_red]' : 'bg-blue-400/30'
+                    }`}
+                    style={{
+                      left: `${(p.x / 255) * 360}px`,
+                      top: `${(p.y / 255) * 360}px`,
+                      transform: 'translate(-50%, -50%)'
+                    }}
+                  >
+                    <span className={`absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-bold ${selectedPointIndex === i ? 'text-yellow-400' : 'text-white/50'}`}>{i+1}</span>
+                  </div>
+                ))}
+
                 {/* Point de prévisualisation du mouvement réel */}
                 {config.shape !== 'none' && (
                   <div 
-                    className="absolute pointer-events-none w-3 h-3 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] border border-white/50 transition-all duration-75 z-20"
+                    className="absolute pointer-events-none w-4 h-4 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] border border-white/50 transition-all duration-75 z-20"
                     style={{
-                      left: `${(Math.min(255, Math.max(0, centerX + previewOffset.x)) / 255) * 300}px`,
-                      top: `${(Math.min(255, Math.max(0, centerY + previewOffset.y)) / 255) * 300}px`,
-                      transform: 'translate(-50%, -50%)'
-                    }}
-                  />
-                )}
-                
-                {/* Indicateur de centre statique si mouvement actif */}
-                {config.shape !== 'none' && (
-                  <div 
-                    className="absolute pointer-events-none w-1.5 h-1.5 bg-white/20 rounded-full border border-white/40"
-                    style={{
-                      left: `${(centerX / 255) * 300}px`,
-                      top: `${(centerY / 255) * 300}px`,
+                      left: `${(Math.min(255, Math.max(0, centerX + previewOffset.x)) / 255) * 360}px`,
+                      top: `${(Math.min(255, Math.max(0, centerY + previewOffset.y)) / 255) * 360}px`,
                       transform: 'translate(-50%, -50%)'
                     }}
                   />
                 )}
               </div>
+
               <button 
                 onClick={() => {
                   sendMovement(fixtureIds, 127, 127, groupId);
                   updateConfig({ shape: 'none' });
                 }}
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-[8px] font-black text-slate-400 uppercase rounded-lg border border-white/5 transition-all"
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-black text-slate-400 uppercase rounded-lg border border-white/5 transition-all"
               >
-                Recentrer
+                Recentrer au Milieu (127)
               </button>
 
-              {/* Valeurs numériques et Faders de contrôle du centre */}
-              <div className="flex flex-col gap-4 w-full mt-2">
-                <div className="bg-black/60 p-3 rounded-xl border border-white/5 space-y-3">
-                  <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Axe Pan</span>
-                      <span className="text-[7px] font-bold text-slate-600 uppercase">Base: {centerX}</span>
+              {/* Faders de contrôle du centre à GAUCHE */}
+              <div className="w-full bg-black/40 p-4 rounded-xl border border-white/5 space-y-4">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-white/10 pb-1.5">Position Offset</p>
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Base Pan: {centerX}</span>
+                      <span className="text-xs font-mono font-black text-cyan-400">LIVE: {Math.round(Math.min(255, Math.max(0, centerX + previewOffset.x)))}</span>
                     </div>
-                    <span className="text-[10px] font-mono font-black text-cyan-400">LIVE: {Math.round(Math.min(255, Math.max(0, centerX + previewOffset.x)))}</span>
+                    <ControlSlider 
+                      label="Center Pan" 
+                      value={centerX} 
+                      onChange={(nx) => sendMovement(fixtureIds, Number(nx), centerY, groupId)} 
+                      color="bg-cyan-500/50" 
+                    />
                   </div>
-                  <ControlSlider 
-                    label="Center Pan" 
-                    value={centerX} 
-                    onChange={(nx) => sendMovement(fixtureIds, Number(nx), centerY, groupId)} 
-                    color="bg-cyan-500/50" 
-                  />
-                </div>
-
-                <div className="bg-black/60 p-3 rounded-xl border border-white/5 space-y-3">
-                  <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Axe Tilt</span>
-                      <span className="text-[7px] font-bold text-slate-600 uppercase">Base: {centerY}</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Base Tilt: {centerY}</span>
+                      <span className="text-xs font-mono font-black text-indigo-400">LIVE: {Math.round(Math.min(255, Math.max(0, centerY + previewOffset.y)))}</span>
                     </div>
-                    <span className="text-[10px] font-mono font-black text-indigo-400">LIVE: {Math.round(Math.min(255, Math.max(0, centerY + previewOffset.y)))}</span>
+                    <ControlSlider 
+                      label="Center Tilt" 
+                      value={centerY} 
+                      onChange={(ny) => sendMovement(fixtureIds, centerX, Number(ny), groupId)} 
+                      color="bg-indigo-500/50" 
+                    />
                   </div>
-                  <ControlSlider 
-                    label="Center Tilt" 
-                    value={centerY} 
-                    onChange={(ny) => sendMovement(fixtureIds, centerX, Number(ny), groupId)} 
-                    color="bg-indigo-500/50" 
-                  />
                 </div>
               </div>
             </div>
 
-            {/* Colonne Sliders (Réglages) et Mémorisation */}
-            <div className="col-span-7 flex flex-col justify-between py-1">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center pr-2">
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">Vitesse</p>
-                    <span className="text-lg font-mono font-black text-blue-400">{Math.round((config.speed / 255) * 100)}%</span>
+            {/* Colonne DROITE (Réglages et Trajectoires) */}
+            <div className="col-span-7 flex flex-col gap-5 py-1 overflow-y-auto max-h-[700px] pr-1 custom-scrollbar">
+              <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-5">
+                <p className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em] border-b border-blue-500/20 pb-2">Réglages du Mouvement</p>
+                
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center pr-2">
+                        <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">Vitesse</p>
+                        <span className="text-base font-mono font-black text-blue-400">{Math.round((config.speed / 255) * 100)}%</span>
+                      </div>
+                      <ControlSlider 
+                        label="Fréquence" 
+                        value={config.speed} 
+                        onChange={(v) => updateConfig({ speed: Number(v) })} 
+                        color="bg-blue-500" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center pr-2">
+                        <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">Phase (FAN)</p>
+                        <span className="text-base font-mono font-black text-blue-400">{Math.round((config.fan / 255) * 100)}%</span>
+                      </div>
+                      <ControlSlider 
+                        label="Décalage" 
+                        value={config.fan} 
+                        onChange={(v) => updateConfig({ fan: Number(v) })} 
+                        color="bg-blue-500" 
+                      />
+                    </div>
                   </div>
-                  <ControlSlider 
-                    label="Fréquence" 
-                    value={config.speed} 
-                    onChange={(v) => updateConfig({ speed: Number(v) })} 
-                    color="bg-blue-500" 
-                  />
-                </div>
 
-                <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center pr-2">
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-cyan-500 pl-3">Amplitude Pan</p>
-                    <span className="text-sm font-mono font-black text-cyan-400">{Math.round(((config.sizePan ?? 64) / 255) * 100)}%</span>
-                  </div>
-                  <ControlSlider 
-                    label="Largeur" 
-                    value={config.sizePan ?? 64} 
-                    onChange={(v) => updateConfig({ sizePan: Number(v) })} 
-                    color="bg-cyan-500" 
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2 pt-4">
-                  <button
-                    onClick={() => setIsLinked(!isLinked)}
-                    className={`p-2 rounded-lg border transition-all ${
-                      isLinked 
-                      ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' 
-                      : 'bg-slate-800/50 border-white/5 text-slate-500'
-                    }`}
-                    title={isLinked ? "Délier les amplitudes" : "Lier les amplitudes"}
-                  >
-                    {isLinked ? <Link2 className="w-4 h-4" /> : <Link2Off className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={() => updateConfig({ sizePan: 64, sizeTilt: 64 })}
-                    className="p-2 rounded-lg bg-slate-800/50 border border-white/5 text-slate-500 hover:text-white hover:border-white/20 transition-all"
-                    title="Réinitialiser les amplitudes (50%)"
-                  >
-                    <RefreshCcw className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center pr-2">
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-indigo-500 pl-3">Amplitude Tilt</p>
-                    <span className="text-sm font-mono font-black text-indigo-400">{Math.round(((config.sizeTilt ?? 64) / 255) * 100)}%</span>
-                  </div>
-                  <ControlSlider 
-                    label="Hauteur" 
-                    value={config.sizeTilt ?? 64} 
-                    onChange={(v) => updateConfig({ sizeTilt: Number(v) })} 
-                    color="bg-indigo-500" 
-                  />
-                </div>
-              </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center pr-2">
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">Décalage (FAN)</p>
-                    <span className="text-lg font-mono font-black text-blue-400">{Math.round((config.fan / 255) * 100)}%</span>
-                  </div>
-                  <ControlSlider 
-                  label="Phase entre lyres" 
-                  value={config.fan} 
-                  onChange={(v) => updateConfig({ fan: Number(v) })} 
-                  color="bg-blue-500" 
-                />
-              </div>
-            </div>
-
-              {/* Mémorisation de mouvements */}
-              <div className="mt-4 p-4 bg-black/40 rounded-2xl border border-white/5 space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em]">Mémoires de Mouvements</p>
-                  <span className="text-[8px] text-slate-600 italic">Clic Droit : Sauver | Clic G : Charger</span>
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {mvtPresets.map((preset: any, i: number) => {
-                    const isCurrent = config.shape === preset.shape && 
-                                    config.speed === preset.speed && 
-                                    config.sizePan === preset.sizePan && 
-                                    config.sizeTilt === preset.sizeTilt && 
-                                    config.fan === preset.fan && 
-                                    config.invert180 === preset.invert180;
-                    return (
-                      <div key={i} className="group relative">
+                  <div className="space-y-5">
+                    <div className="flex items-center justify-between px-1">
+                      <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-cyan-500 pl-3">Amplitudes</p>
+                      <div className="flex gap-2">
                         <button
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            handleSaveMvtPreset(i);
-                          }}
-                          onClick={() => handleLoadMvtPreset(i)}
-                          className={`w-full py-3 rounded-xl border transition-all flex flex-col items-center gap-1 ${
-                            isCurrent
-                            ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
-                            : 'bg-slate-800/50 border-white/5 text-slate-400 hover:border-blue-500/30 hover:text-blue-300'
+                          onClick={() => setIsLinked(!isLinked)}
+                          className={`p-2 rounded-lg border transition-all ${
+                            isLinked 
+                            ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' 
+                            : 'bg-slate-800/50 border-white/5 text-slate-500'
                           }`}
+                          title={isLinked ? "Délier Pan/Tilt" : "Lier Pan/Tilt"}
                         >
-                          <Save className="w-3 h-3 opacity-40 group-hover:opacity-100 transition-opacity" />
-                          <span className="text-[8px] font-black uppercase truncate w-full px-1">{preset.label}</span>
+                          {isLinked ? <Link2 className="w-4 h-4" /> : <Link2Off className="w-4 h-4" />}
                         </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRenameMvtPreset(i);
-                          }}
-                          className="absolute -top-1 -right-1 p-1 bg-slate-900 border border-white/10 rounded-full opacity-0 group-hover:opacity-100 hover:bg-blue-500 transition-all z-10"
+                        <button
+                          onClick={() => updateConfig({ sizePan: 64, sizeTilt: 64 })}
+                          className="p-2 rounded-lg bg-slate-800/50 border border-white/5 text-slate-500 hover:text-white hover:border-white/20 transition-all"
+                          title="Réinitialiser (50%)"
                         >
-                          <Edit2 className="w-2 h-2 text-white" />
+                          <RefreshCcw className="w-4 h-4" />
                         </button>
                       </div>
-                    );
-                  })}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center pr-2">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3">Largeur Pan</p>
+                        <span className="text-sm font-mono font-black text-cyan-400">{Math.round(((config.sizePan ?? 64) / 255) * 100)}%</span>
+                      </div>
+                      <ControlSlider 
+                        label="Largeur" 
+                        value={config.sizePan ?? 64} 
+                        onChange={(v) => updateConfig({ sizePan: Number(v) })} 
+                        color="bg-cyan-500" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center pr-2">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3">Hauteur Tilt</p>
+                        <span className="text-sm font-mono font-black text-indigo-400">{Math.round(((config.sizeTilt ?? 64) / 255) * 100)}%</span>
+                      </div>
+                      <ControlSlider 
+                        label="Hauteur" 
+                        value={config.sizeTilt ?? 64} 
+                        onChange={(v) => updateConfig({ sizeTilt: Number(v) })} 
+                        color="bg-indigo-500" 
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Mémorisation de positions */}
-              <div className="mt-4 p-4 bg-black/40 rounded-2xl border border-white/5 space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Positions Mémorisées</p>
-                  <span className="text-[8px] text-slate-600 italic">Clic Droit : Sauver | Clic G : Aller</span>
+              {/* Trajectoire Point à Point */}
+              <div className="p-5 bg-black/60 rounded-2xl border border-white/5 space-y-4">
+                <div className="flex justify-between items-center">
+                  <p className="text-[11px] font-black text-red-400 uppercase tracking-[0.2em]">Trajectoire Point à Point</p>
+                  <span className="text-[10px] text-slate-600 italic">{(isRecording ? localCustomPoints : (config.customPoints || localCustomPoints)).length} points</span>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {positions.map((pos: any, i: number) => (
-                    <div key={i} className="group relative">
-                      <button
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          handleSavePosition(i);
-                        }}
-                        onClick={() => sendMovement(fixtureIds, pos.x, pos.y, groupId)}
-                        className={`w-full py-4 rounded-xl border transition-all flex flex-col items-center gap-1 ${
-                          centerX === pos.x && centerY === pos.y
-                          ? 'bg-blue-500/20 border-blue-500/50 text-blue-400'
-                          : 'bg-slate-800/50 border-white/5 text-slate-400 hover:border-blue-500/30 hover:text-blue-300'
+                
+                <div className="flex flex-wrap gap-3">
+                  <button 
+                    onClick={() => {
+                      if (isRecording) {
+                        setIsRecording(false);
+                        setPhantomPoint(null);
+                        updateConfig({ shape: 'custom', customPoints: localCustomPoints });
+                      } else {
+                        setLocalCustomPoints([]);
+                        setIsRecording(true);
+                        setPhantomPoint({ x: centerX, y: centerY });
+                        setSelectedPointIndex(null);
+                        updateConfig({ shape: 'none' });
+                      }
+                    }}
+                    className={`flex-1 min-w-[120px] py-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${
+                      isRecording 
+                      ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.4)]' 
+                      : 'bg-slate-800 text-slate-400 hover:bg-red-500/20 hover:text-red-400'
+                    }`}
+                  >
+                    {isRecording ? <Square className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {isRecording ? 'Stop Rec' : 'Nouv. Trajet'}
+                  </button>
+
+                  {isRecording && (
+                    <button 
+                      onClick={handleAddPoint}
+                      className="px-8 py-3 bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-blue-400 transition-all shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+                    >
+                      <Plus className="w-4 h-4" /> REC POINT
+                    </button>
+                  )}
+
+                  {!isRecording && localCustomPoints.length > 0 && (
+                    <>
+                      <button 
+                        onClick={() => updateConfig({ shape: 'custom', customPoints: localCustomPoints })}
+                        className={`flex-1 min-w-[80px] py-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${
+                          config.shape === 'custom'
+                          ? 'bg-blue-500 text-white shadow-[0_0_10px_rgba(59,130,246,0.4)]'
+                          : 'bg-slate-800 text-slate-400 hover:bg-blue-500/20 hover:text-blue-400'
                         }`}
                       >
-                        <Save className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />
-                        <span className="text-[8px] font-black uppercase truncate w-full px-1">{pos.label}</span>
+                        <Play className="w-4 h-4" /> Lire
                       </button>
+                      
                       <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRenamePosition(i);
+                        onClick={() => {
+                          setIsEditMode(!isEditMode);
+                          if (isEditMode) setSelectedPointIndex(null);
                         }}
-                        className="absolute -top-1 -right-1 p-1 bg-slate-900 border border-white/10 rounded-full opacity-0 group-hover:opacity-100 hover:bg-blue-500 transition-all"
+                        className={`flex-1 min-w-[80px] py-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${
+                          isEditMode
+                          ? 'bg-yellow-500 text-black shadow-[0_0_10px_rgba(234,179,8,0.4)]'
+                          : 'bg-slate-800 text-slate-400 hover:bg-yellow-500/20 hover:text-yellow-500'
+                        }`}
                       >
-                        <Edit2 className="w-2 h-2 text-white" />
+                        <Edit2 className="w-4 h-4" /> {isEditMode ? 'FIN EDIT' : 'MODIFIER'}
                       </button>
+
+                      <button 
+                        onClick={handleInsertPoint}
+                        className="flex-1 min-w-[80px] py-3 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-blue-400 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all"
+                      >
+                        <Plus className="w-4 h-4" /> Point +
+                      </button>
+
+                      <button 
+                        onClick={handleSaveTrajectory}
+                        className="flex-1 min-w-[80px] py-3 bg-green-600/20 hover:bg-green-600/40 border border-green-500/30 text-green-400 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all"
+                      >
+                        <Save className="w-4 h-4" /> Sauver
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {selectedPointIndex !== null && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-xl flex justify-between items-center">
+                    <span className="text-[10px] font-black text-yellow-500 uppercase">Édition Point {selectedPointIndex + 1}</span>
+                    <div className="flex gap-5">
+                      <button 
+                        onClick={() => {
+                          const newPoints = localCustomPoints.filter((_, i) => i !== selectedPointIndex);
+                          setLocalCustomPoints(newPoints);
+                          setSelectedPointIndex(null);
+                          if (config.shape === 'custom') updateConfig({ shape: 'custom', customPoints: newPoints });
+                        }}
+                        className="text-[9px] text-red-400 font-bold hover:underline"
+                      >
+                        Supprimer
+                      </button>
+                      <button onClick={() => setSelectedPointIndex(null)} className="text-[9px] text-yellow-500 font-bold uppercase">OK</button>
                     </div>
-                  ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Bibliothèque et Mémoires (Grid 2 colonnes) */}
+              <div className="grid grid-cols-2 gap-5">
+                <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black text-purple-400 uppercase tracking-[0.2em]">Bibliothèque</p>
+                    <span className="text-[9px] text-slate-500 italic">Clic Droit: Menu</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                    {customTrajectories.map((traj) => (
+                      <div key={traj.id} className="group relative">
+                        <button
+                          onClick={() => handleLoadTrajectory(traj)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setTrajMenu({ id: traj.id, x: e.clientX, y: e.clientY });
+                          }}
+                          className={`w-full py-2.5 px-4 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                            config.shape === 'custom' && JSON.stringify(config.customPoints) === JSON.stringify(traj.points)
+                            ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                            : 'bg-slate-800/50 border-white/5 text-slate-400 hover:border-purple-500/30'
+                          }`}
+                        >
+                          <span className="text-[10px] font-black uppercase truncate">{traj.label}</span>
+                          <Play className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em]">Presets MVT</p>
+                    <span className="text-[9px] text-slate-500 italic">Clic Droit: Sauver</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {mvtPresets.slice(0, 4).map((preset: any, i: number) => {
+                      const isCurrent = config.shape === preset.shape && 
+                                      config.speed === preset.speed && 
+                                      config.sizePan === preset.sizePan && 
+                                      config.sizeTilt === preset.sizeTilt && 
+                                      config.fan === preset.fan && 
+                                      config.invert180 === preset.invert180;
+                      return (
+                        <div key={i} className="group relative">
+                          <button
+                            onClick={() => handleLoadMvtPreset(i)}
+                            onContextMenu={(e) => { e.preventDefault(); handleSaveMvtPreset(i); }}
+                            className={`w-full py-3 rounded-xl border transition-all text-[10px] font-black uppercase truncate flex items-center justify-center gap-2 ${
+                              isCurrent
+                              ? 'bg-blue-500/20 border-blue-500/50 text-blue-400'
+                              : 'bg-slate-800/50 border-white/5 text-slate-400 hover:border-blue-500/30'
+                            }`}
+                          >
+                            <Save className={`w-3 h-3 opacity-40 group-hover:opacity-100 transition-opacity ${isCurrent ? 'opacity-100' : ''}`} />
+                            {preset.label}
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRenameMvtPreset(i);
+                            }}
+                            className="absolute -top-1 -right-1 p-1 bg-slate-900 border border-white/10 rounded-full opacity-0 group-hover:opacity-100 hover:bg-blue-500 transition-all z-10"
+                          >
+                            <Edit2 className="w-2.5 h-2.5 text-white" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
+
+              {/* Positions (Grid compact) */}
+              <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Positions Mémorisées</p>
+                    <span className="text-[9px] text-slate-500 italic">Clic Droit: Sauver</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    {positions.map((pos: any, i: number) => {
+                      const isCurrent = centerX === pos.x && centerY === pos.y;
+                      return (
+                        <div key={i} className="group relative">
+                          <button
+                            onClick={() => sendMovement(fixtureIds, pos.x, pos.y, groupId)}
+                            onContextMenu={(e) => { e.preventDefault(); handleSavePosition(i); }}
+                            className={`w-full py-3 rounded-xl border transition-all text-[10px] font-black uppercase truncate flex flex-col items-center gap-1 ${
+                              isCurrent
+                              ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.1)]'
+                              : 'bg-slate-800/50 border-white/5 text-slate-400 hover:border-blue-500/30'
+                            }`}
+                          >
+                            <Save className={`w-3 h-3 opacity-40 group-hover:opacity-100 transition-opacity ${isCurrent ? 'opacity-100' : ''}`} />
+                            {pos.label}
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRenamePosition(i);
+                            }}
+                            className="absolute -top-1 -right-1 p-1 bg-slate-900 border border-white/10 rounded-full opacity-0 group-hover:opacity-100 hover:bg-blue-500 transition-all z-10"
+                          >
+                            <Edit2 className="w-2.5 h-2.5 text-white" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="pt-2 flex justify-end gap-4">
+      <div className="pt-3 flex justify-end gap-5">
           <button 
             onClick={() => {
               updateConfig({ shape: 'none', speed: 128, sizePan: 64, sizeTilt: 64, fan: 0, invert180: false });
               sendMovement(fixtureIds, 127, 127, groupId);
             }}
-            className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 border border-white/5 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] transition-all active:scale-95"
+            className="px-10 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 border border-white/5 rounded-2xl text-xs font-black uppercase tracking-[0.3em] transition-all active:scale-95"
           >
             Réinitialiser
           </button>
           <button 
             onClick={onClose}
-            className="px-12 py-4 bg-slate-800 hover:bg-slate-700 text-white border border-white/5 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] transition-all shadow-xl active:scale-95"
+            className="px-16 py-4 bg-slate-800 hover:bg-slate-700 text-white border border-white/5 rounded-2xl text-xs font-black uppercase tracking-[0.3em] transition-all shadow-xl active:scale-95"
           >
             Fermer
           </button>

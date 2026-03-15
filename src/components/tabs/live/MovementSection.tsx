@@ -1,5 +1,5 @@
 import React from 'react';
-import { Move, Activity, HeartPulse, RefreshCw, Settings2, Sparkles } from 'lucide-react';
+import { Move, Activity, HeartPulse, RefreshCw, Settings2, Sparkles, MapPin, Share2 } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 import { Tooltip } from '../../ui/Tooltip';
@@ -33,6 +33,18 @@ interface MovementSectionProps {
   updateDmx: (channel: number, value: number) => void;
   onOpenCalibration: () => void;
   onOpenEffects: (groupId: string, groupName: string, fixtureIds: number[]) => void;
+  groupPositions: Record<string, { x: number, y: number, label: string }[]>;
+  groupMovementPresets: Record<string, { 
+    shape: string,
+    speed: number,
+    sizePan: number,
+    sizeTilt: number,
+    fan: number,
+    invert180: boolean,
+    label: string,
+    customPoints?: {x: number, y: number}[] 
+  }[]>;
+  setGroupMovements: (val: any) => void;
 }
 
 export const MovementSection = ({
@@ -62,7 +74,10 @@ export const MovementSection = ({
   channels,
   updateDmx,
   onOpenCalibration,
-  onOpenEffects
+  onOpenEffects,
+  groupPositions,
+  groupMovementPresets,
+  setGroupMovements
 }: MovementSectionProps) => {
   const getLiveIntensity = (groupId: string) => {
     const group = groups.find(g => g.id === groupId);
@@ -127,11 +142,11 @@ export const MovementSection = ({
               
               <div className="flex justify-between items-center border-b border-white/10 pb-3 relative z-10">
                 <div className="flex items-center gap-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">{group.name}</h3>
+                  <h3 className="text-xs font-black uppercase tracking-widest text-slate-300">{group.name}</h3>
                   <div className="flex gap-2">
-                    {groupPulseActive[group.id] && <span className="px-1.5 py-0.5 bg-amber-500/20 text-[8px] font-black text-amber-500 rounded border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">PULSE</span>}
-                    {groupAutoColorActive[group.id] && <span className="px-1.5 py-0.5 bg-cyan-500/20 text-[8px] font-black text-cyan-400 rounded border border-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.2)]">AUTO-RAINBOW</span>}
-                    {groupAutoGoboActive[group.id] && <span className="px-1.5 py-0.5 bg-indigo-500/20 text-[8px] font-black text-indigo-400 rounded border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.2)]">AUTO-GOBO</span>}
+                    {groupPulseActive[group.id] && <span className="px-1.5 py-0.5 bg-amber-500/20 text-[9px] font-black text-amber-500 rounded border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">PULSE</span>}
+                    {groupAutoColorActive[group.id] && <span className="px-1.5 py-0.5 bg-cyan-500/20 text-[9px] font-black text-cyan-400 rounded border border-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.2)]">AUTO-RAINBOW</span>}
+                    {groupAutoGoboActive[group.id] && <span className="px-1.5 py-0.5 bg-indigo-500/20 text-[9px] font-black text-indigo-400 rounded border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.2)]">AUTO-GOBO</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -149,12 +164,17 @@ export const MovementSection = ({
                          style={{ width: `${liveHeight}%` }}
                        />
                     </div>
+                    {/* Lecture PAN/TILT à droite du VU-mètre */}
+                    <div className="flex items-center gap-2 bg-black/40 px-2.5 py-1 rounded border border-white/5 shadow-inner ml-1">
+                      <span className="text-[10px] font-mono font-black text-cyan-400">P:{Math.round(liveGroupPositions[group.id]?.pan ?? groupPan[group.id] ?? 127)}</span>
+                      <span className="text-[10px] font-mono font-black text-indigo-400">T:{Math.round(liveGroupPositions[group.id]?.tilt ?? groupTilt[group.id] ?? 127)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-12 gap-3">
-                <div className="col-span-7 flex gap-3">
+              <div className="grid grid-cols-12 gap-2">
+                <div className="col-span-6 flex gap-2">
                   <div className="space-y-3 w-fit shrink-0">
                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-2">Lumière</p>
                     <div className="flex gap-2 pt-1">
@@ -282,7 +302,7 @@ export const MovementSection = ({
                   </div>
                 </div>
 
-                <div className="col-span-5 flex gap-3 pt-0.5 border-l border-white/5 pl-3">
+                <div className="col-span-6 flex gap-2 pt-0.5 border-l border-white/5 pl-2">
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center justify-between pr-1">
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-cyan-500 pl-2">Mouvement</p>
@@ -321,34 +341,82 @@ export const MovementSection = ({
                         <div className="flex gap-1">
                            <Tooltip text="Recentrer le faisceau (127, 127)" className="flex-1">
                              <button 
-                               onClick={() => sendMovement(group.fixtureIds, 127, 127, group.id)}
-                               className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-[8px] font-black text-slate-500 uppercase rounded-lg border border-white/5 transition-all"
+                               onClick={() => {
+                                 sendMovement(group.fixtureIds, 127, 127, group.id);
+                                 setGroupMovements((prev: any) => ({
+                                   ...prev,
+                                   [group.id]: { ...prev[group.id], shape: 'none' }
+                                 }));
+                               }}
+                               className="w-full h-10 bg-slate-800 hover:bg-slate-700 text-[8px] font-black text-slate-500 hover:text-white uppercase rounded-lg border border-white/5 transition-all active:scale-95"
                              >
                                Center
                              </button>
                            </Tooltip>
-                           <Tooltip text="Inverser la position (Rotation 180°)" className="flex-1">
-                             <button 
-                               onClick={() => sendMovement(group.fixtureIds, 255 - (groupPan[group.id] || 127), 255 - (groupTilt[group.id] || 127), group.id)}
-                               className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-[8px] font-black text-slate-500 uppercase rounded-lg border border-white/5 transition-all"
-                             >
-                               180°
-                             </button>
-                           </Tooltip>
                          </div>
                       </div>
+                    </div>
+                  </div>
 
-                      <div className="flex-1 space-y-2 pt-1">
-                        <div className="bg-black/40 p-2.5 rounded-xl border border-white/5 space-y-2 shadow-inner">
-                           <div className="flex justify-between items-center border-b border-white/10 pb-1">
-                             <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">Pan</span>
-                             <span className="text-[10px] font-mono font-black text-cyan-400">{Math.round(liveGroupPositions[group.id]?.pan ?? groupPan[group.id] ?? 127)}</span>
-                           </div>
-                           <div className="flex justify-between items-center">
-                             <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">Tilt</span>
-                             <span className="text-[10px] font-mono font-black text-indigo-400">{Math.round(liveGroupPositions[group.id]?.tilt ?? groupTilt[group.id] ?? 127)}</span>
-                           </div>
-                        </div>
+                  <div className="col-span-12 grid grid-cols-1 gap-4 pt-2 border-t border-white/5">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <MapPin className="w-3 h-3 text-cyan-500" /> Positions fixes
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(groupPositions[group.id] || []).length > 0 ? (
+                          groupPositions[group.id].map((pos, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                sendMovement(group.fixtureIds, pos.x, pos.y, group.id);
+                                setGroupMovements((prev: any) => ({
+                                  ...prev,
+                                  [group.id]: { ...prev[group.id], shape: 'none' }
+                                }));
+                              }}
+                              className="px-3 h-10 bg-slate-800/50 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/30 rounded-lg text-[10px] font-bold text-slate-400 hover:text-cyan-400 transition-all active:scale-95 shadow-lg"
+                            >
+                              {pos.label || `Pos ${idx + 1}`}
+                            </button>
+                          ))
+                        ) : (
+                          <span className="text-[8px] text-slate-600 italic">Aucune position enregistrée</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <Share2 className="w-3 h-3 text-purple-500" /> Mouvements Auto
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(groupMovementPresets[group.id] || []).length > 0 ? (
+                          groupMovementPresets[group.id].map((move, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setGroupMovements((prev: any) => ({
+                                  ...prev,
+                                  [group.id]: {
+                                    ...prev[group.id],
+                                    shape: move.shape,
+                                    speed: move.speed,
+                                    sizePan: move.sizePan,
+                                    sizeTilt: move.sizeTilt,
+                                    fan: move.fan,
+                                    invert180: move.invert180,
+                                    customPoints: move.customPoints || []
+                                  }
+                                }));
+                              }}
+                              className="px-3 h-10 bg-slate-800/50 hover:bg-purple-500/20 border border-white/5 hover:border-purple-500/30 rounded-lg text-[10px] font-bold text-slate-400 hover:text-purple-400 transition-all active:scale-95 shadow-lg"
+                            >
+                              {move.label || `Mouv ${idx + 1}`}
+                            </button>
+                          ))
+                        ) : (
+                          <span className="text-[8px] text-slate-600 italic">Aucun mouvement enregistré</span>
+                        )}
                       </div>
                     </div>
                   </div>
