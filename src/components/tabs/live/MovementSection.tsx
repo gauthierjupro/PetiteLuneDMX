@@ -1,5 +1,5 @@
 import React from 'react';
-import { Move, Activity, HeartPulse, RefreshCw, Settings2, Sparkles, MapPin, Share2 } from 'lucide-react';
+import { Move, Activity, HeartPulse, RefreshCw, Settings2, Sparkles, MapPin, Share2, HelpCircle } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 import { Tooltip } from '../../ui/Tooltip';
@@ -173,10 +173,16 @@ export const MovementSection = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-12 gap-2">
-                <div className="col-span-6 flex gap-2">
-                  <div className="space-y-3 w-fit shrink-0">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-2">Lumière</p>
+              <div className="flex flex-wrap gap-6 relative z-10">
+                {/* Bloc Contrôles (Lumière, Couleurs, Gobos, Modes) */}
+                <div className="flex flex-wrap gap-4 min-w-fit">
+                  <div className="space-y-3 shrink-0">
+                    <div className="flex items-center justify-between border-l-2 border-blue-500 pl-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lumière</p>
+                      <Tooltip text="Dimmer: Intensité lumineuse. Strobe: Fréquence de clignotement (Clic droit pour éditer la valeur max).">
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-blue-400 cursor-help transition-colors ml-2" />
+                      </Tooltip>
+                    </div>
                     <div className="flex gap-2 pt-1">
                       <div className="flex flex-col items-center gap-2">
                         <VerticalSlider 
@@ -187,12 +193,8 @@ export const MovementSection = ({
                           color="bg-blue-500" 
                         />
                         <div className="flex flex-col gap-1 w-full pt-1">
-                          <Tooltip text="100%" className="w-full">
-                            <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 255, group.id)} className="w-full py-1.5 bg-blue-500 hover:bg-blue-400 text-[#05070a] rounded-lg text-[9px] font-black uppercase transition-all active:scale-90 shadow-lg">100%</button>
-                          </Tooltip>
-                          <Tooltip text="0%" className="w-full">
-                            <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 0, group.id)} className="w-full py-1.5 bg-slate-800 hover:bg-rose-600 text-white rounded-lg text-[9px] font-black uppercase border border-white/5 transition-all active:scale-90">0%</button>
-                          </Tooltip>
+                          <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 255, group.id)} className="w-10 py-1.5 bg-blue-500 hover:bg-blue-400 text-[#05070a] rounded-lg text-[9px] font-black uppercase transition-all active:scale-90 shadow-lg">100</button>
+                          <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 0, group.id)} className="w-10 py-1.5 bg-slate-800 hover:bg-rose-600 text-white rounded-lg text-[9px] font-black uppercase border border-white/5 transition-all active:scale-90">0</button>
                         </div>
                       </div>
                       <div className="flex flex-col items-center gap-2">
@@ -204,28 +206,29 @@ export const MovementSection = ({
                           color="bg-emerald-500" 
                         />
                         <div className="flex flex-col gap-1 w-full pt-1">
-                          <Tooltip text={`Strobe ${Math.round(((groupStrobeValues[group.id] || 255) / 255) * 100)}% (Clic droit pour régler)`} className="w-full">
-                            <button 
-                              onClick={() => sendIntensity(group.fixtureIds, 'str', groupStrobeValues[group.id] || 255, group.id)} 
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                                onStrobeEdit(group.id);
-                              }}
-                              className="w-full py-1.5 bg-emerald-500 hover:bg-emerald-400 text-[#05070a] rounded-lg text-[9px] font-black uppercase transition-all active:scale-90 shadow-lg"
-                            >
-                              {Math.round(((groupStrobeValues[group.id] || 255) / 255) * 100)}%
-                            </button>
-                          </Tooltip>
-                          <Tooltip text="Strobe 0%" className="w-full">
-                            <button onClick={() => sendIntensity(group.fixtureIds, 'str', 0, group.id)} className="w-full py-1.5 bg-slate-800 hover:bg-rose-600 text-white rounded-lg text-[9px] font-black uppercase border border-white/5 transition-all active:scale-90">0%</button>
-                          </Tooltip>
+                          <button 
+                            onClick={() => sendIntensity(group.fixtureIds, 'str', groupStrobeValues[group.id] || 255, group.id)} 
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              onStrobeEdit(group.id);
+                            }}
+                            className="w-10 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-[#05070a] rounded-lg text-[9px] font-black uppercase transition-all active:scale-90 shadow-lg"
+                          >
+                            {Math.round(((groupStrobeValues[group.id] || 255) / 255) * 100)}
+                          </button>
+                          <button onClick={() => sendIntensity(group.fixtureIds, 'str', 0, group.id)} className="w-10 py-1.5 bg-slate-800 hover:bg-rose-600 text-white rounded-lg text-[9px] font-black uppercase border border-white/5 transition-all active:scale-90">0</button>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-3 w-fit shrink-0">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-purple-500 pl-2">Couleurs</p>
+                  <div className="space-y-3 shrink-0">
+                    <div className="flex items-center justify-between border-l-2 border-purple-500 pl-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Couleurs</p>
+                      <Tooltip text="Sélection directe des couleurs via la roue chromatique de la lyre PicoSpot.">
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-purple-400 cursor-help transition-colors ml-2" />
+                      </Tooltip>
+                    </div>
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       {[
                         { l: 'W',  r: 255, g: 255, b: 255, hex: '#ffffff', v: 5 },
@@ -246,14 +249,18 @@ export const MovementSection = ({
                             ? (liveGroupColors[group.id] === c.v ? 'border-white border-[3px] scale-105 shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'border-white/20 hover:scale-105')
                             : (groupColors[group.id]?.v === c.v ? 'border-white border-[3px] scale-105 shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'border-white/20 hover:scale-105')
                           }`}
-                          title={c.l}
                         />
                       ))}
                     </div>
                   </div>
 
                   <div className="space-y-3 shrink-0">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-amber-500 pl-2">Gobos</p>
+                    <div className="flex items-center justify-between border-l-2 border-amber-500 pl-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Gobos</p>
+                      <Tooltip text="Sélecteur de motifs (Gobos) pour la lyre. '∅' correspond à aucun motif (faisceau plein).">
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-amber-500 cursor-help transition-colors ml-2" />
+                      </Tooltip>
+                    </div>
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       {[0, 1, 2, 3, 4, 5, 6, 7].map(g => (
                         <button 
@@ -272,152 +279,160 @@ export const MovementSection = ({
                   </div>
 
                   <div className="space-y-3 shrink-0">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-indigo-500 pl-2">Modes</p>
+                    <div className="flex items-center justify-between border-l-2 border-indigo-500 pl-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Modes</p>
+                      <Tooltip text="Auto: Cycle de couleurs. Pulse: Intensité synchronisée sur le BPM. Auto Gobo: Cycle automatique des motifs.">
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-indigo-400 cursor-help transition-colors ml-2" />
+                      </Tooltip>
+                    </div>
                     <div className="flex flex-col gap-2 pt-1">
-                      <Tooltip text="Cycle automatique des couleurs" className="w-full">
-                        <button 
-                          onClick={() => handleMacro(group.fixtureIds, 'U1', group.id)}
-                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoColorActive[group.id] ? 'bg-cyan-500 text-[#05070a] border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400'}`}
-                        >
-                          <Activity className={`w-3 h-3 ${groupAutoColorActive[group.id] ? 'animate-pulse' : ''}`} /> Auto
-                        </button>
-                      </Tooltip>
-                      <Tooltip text="Effet de pulsation rythmique" className="w-full">
-                        <button 
-                          onClick={() => handleMacro(group.fixtureIds, 'U3', group.id)}
-                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupPulseActive[group.id] ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15_px_rgba(245,158,11,0.4)]' : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'}`}
-                        >
-                          <HeartPulse className={`w-3 h-3 ${groupPulseActive[group.id] ? 'animate-bounce' : ''}`} /> Pulse
-                        </button>
-                      </Tooltip>
-                      <Tooltip text="Cycle automatique des gobos" className="w-full">
-                        <button 
-                          onClick={() => handleMacro(group.fixtureIds, 'U6', group.id)}
-                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoGoboActive[group.id] ? 'bg-indigo-500 text-[#05070a] border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]' : 'bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-400'}`}
-                        >
-                          <RefreshCw className={`w-3 h-3 ${groupAutoGoboActive[group.id] ? 'animate-spin' : ''}`} /> Auto Gobo
-                        </button>
-                      </Tooltip>
+                      <button 
+                        onClick={() => handleMacro(group.fixtureIds, 'U1', group.id)}
+                        className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoColorActive[group.id] ? 'bg-cyan-500 text-[#05070a] border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400'}`}
+                      >
+                        <Activity className={`w-3 h-3 ${groupAutoColorActive[group.id] ? 'animate-pulse' : ''}`} /> Auto
+                      </button>
+                      <button 
+                        onClick={() => handleMacro(group.fixtureIds, 'U3', group.id)}
+                        className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupPulseActive[group.id] ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15_px_rgba(245,158,11,0.4)]' : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'}`}
+                      >
+                        <HeartPulse className={`w-3 h-3 ${groupPulseActive[group.id] ? 'animate-bounce' : ''}`} /> Pulse
+                      </button>
+                      <button 
+                        onClick={() => handleMacro(group.fixtureIds, 'U6', group.id)}
+                        className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoGoboActive[group.id] ? 'bg-indigo-500 text-[#05070a] border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]' : 'bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-400'}`}
+                      >
+                        <RefreshCw className={`w-3 h-3 ${groupAutoGoboActive[group.id] ? 'animate-spin' : ''}`} /> Auto Gobo
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                <div className="col-span-6 flex gap-2 pt-0.5 border-l border-white/5 pl-2">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-center justify-between pr-1">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-cyan-500 pl-2">Mouvement</p>
-                      <Tooltip text="Ouvrir les effets de mouvement">
-                        <button 
-                          onClick={() => onOpenEffects(group.id, group.name, group.fixtureIds)}
-                          className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg text-[9px] font-black text-purple-400 uppercase transition-all flex items-center justify-center gap-1.5 active:scale-90 duration-75 group/eff"
-                        >
-                          <Sparkles className="w-2.5 h-2.5 group-hover/eff:animate-pulse" /> Effets
-                        </button>
+                {/* Bloc Mouvement (PAD) */}
+                <div className="flex flex-col gap-3 min-w-[160px] border-l border-white/5 pl-4">
+                  <div className="flex items-center justify-between pr-1">
+                    <div className="flex items-center border-l-2 border-cyan-500 pl-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Mouvement</p>
+                      <Tooltip text="Utilisez le PAD pour définir la position centrale. Le point bleu indique le mouvement en temps réel.">
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-cyan-400 cursor-help transition-colors ml-2" />
                       </Tooltip>
                     </div>
-                    <div className="flex gap-3 pt-1">
-                      <div className="space-y-3 shrink-0 relative">
-                        <XYPad 
-                          x={groupPan[group.id] ?? 127} 
-                          y={groupTilt[group.id] ?? 127} 
-                          onChange={(nx, ny) => {
-                            sendMovement(group.fixtureIds, nx, ny, group.id);
-                          }} 
-                          size={160} 
-                        />
-                        
-                        {/* Point de mouvement LIVE si actif */}
-                        {liveGroupPositions[group.id] && (
-                          <div 
-                            className="absolute pointer-events-none w-3 h-3 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] border border-white/50 transition-all duration-75 z-20"
-                            style={{
-                              left: `${(liveGroupPositions[group.id].pan / 255) * 160}px`,
-                              top: `${(liveGroupPositions[group.id].tilt / 255) * 160}px`,
-                              transform: 'translate(-50%, -50%)'
-                            }}
-                          />
-                        )}
-                        
-                        <div className="flex gap-1">
-                           <Tooltip text="Recentrer le faisceau (127, 127)" className="flex-1">
-                             <button 
-                               onClick={() => {
-                                 sendMovement(group.fixtureIds, 127, 127, group.id);
-                                 setGroupMovements((prev: any) => ({
-                                   ...prev,
-                                   [group.id]: { ...prev[group.id], shape: 'none' }
-                                 }));
-                               }}
-                               className="w-full h-10 bg-slate-800 hover:bg-slate-700 text-[8px] font-black text-slate-500 hover:text-white uppercase rounded-lg border border-white/5 transition-all active:scale-95"
-                             >
-                               Center
-                             </button>
-                           </Tooltip>
-                         </div>
-                      </div>
-                    </div>
+                    <button 
+                      onClick={() => onOpenEffects(group.id, group.name, group.fixtureIds)}
+                      className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg text-[9px] font-black text-purple-400 uppercase transition-all flex items-center justify-center gap-1.5 active:scale-90 duration-75 group/eff"
+                    >
+                      <Sparkles className="w-2.5 h-2.5 group-hover/eff:animate-pulse" /> Effets
+                    </button>
                   </div>
+                  
+                  <div className="relative w-fit">
+                    <XYPad 
+                      x={groupPan[group.id] ?? 127} 
+                      y={groupTilt[group.id] ?? 127} 
+                      onChange={(nx, ny) => {
+                        sendMovement(group.fixtureIds, nx, ny, group.id);
+                      }} 
+                      size={160} 
+                    />
+                    
+                    {/* Point de mouvement LIVE si actif */}
+                    {liveGroupPositions[group.id] && (
+                      <div 
+                        className="absolute pointer-events-none w-3 h-3 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] border border-white/50 transition-all duration-75 z-20"
+                        style={{
+                          left: `${(liveGroupPositions[group.id].pan / 255) * 160}px`,
+                          top: `${(liveGroupPositions[group.id].tilt / 255) * 160}px`,
+                          transform: 'translate(-50%, -50%)'
+                        }}
+                      />
+                    )}
+                  </div>
+                  
+                  <button 
+                    onClick={() => {
+                      sendMovement(group.fixtureIds, 127, 127, group.id);
+                      setGroupMovements((prev: any) => ({
+                        ...prev,
+                        [group.id]: { ...prev[group.id], shape: 'none' }
+                      }));
+                    }}
+                    className="w-[160px] h-10 bg-slate-800 hover:bg-slate-700 text-[8px] font-black text-slate-500 hover:text-white uppercase rounded-lg border border-white/5 transition-all active:scale-95"
+                  >
+                    Center
+                  </button>
+                </div>
 
-                  <div className="col-span-12 grid grid-cols-1 gap-4 pt-2 border-t border-white/5">
-                    <div className="space-y-2">
+                {/* Bloc Presets (Positions & Auto) */}
+                <div className="flex-1 min-w-[200px] border-l border-white/5 pl-4 space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                         <MapPin className="w-3 h-3 text-cyan-500" /> Positions fixes
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        {(groupPositions[group.id] || []).length > 0 ? (
-                          groupPositions[group.id].map((pos, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                sendMovement(group.fixtureIds, pos.x, pos.y, group.id);
-                                setGroupMovements((prev: any) => ({
-                                  ...prev,
-                                  [group.id]: { ...prev[group.id], shape: 'none' }
-                                }));
-                              }}
-                              className="px-3 h-10 bg-slate-800/50 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/30 rounded-lg text-[10px] font-bold text-slate-400 hover:text-cyan-400 transition-all active:scale-95 shadow-lg"
-                            >
-                              {pos.label || `Pos ${idx + 1}`}
-                            </button>
-                          ))
-                        ) : (
-                          <span className="text-[8px] text-slate-600 italic">Aucune position enregistrée</span>
-                        )}
-                      </div>
+                      <Tooltip text="Raccourcis vers vos positions fixes sauvegardées.">
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-cyan-400 cursor-help transition-colors" />
+                      </Tooltip>
                     </div>
-                    <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      {(groupPositions[group.id] || []).length > 0 ? (
+                        groupPositions[group.id].map((pos, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              sendMovement(group.fixtureIds, pos.x, pos.y, group.id);
+                              setGroupMovements((prev: any) => ({
+                                ...prev,
+                                [group.id]: { ...prev[group.id], shape: 'none' }
+                              }));
+                            }}
+                            className="px-3 h-10 bg-slate-800/50 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/30 rounded-lg text-[10px] font-bold text-slate-400 hover:text-cyan-400 transition-all active:scale-95 shadow-lg"
+                          >
+                            {pos.label || `Pos ${idx + 1}`}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-[8px] text-slate-600 italic">Aucune position</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                         <Share2 className="w-3 h-3 text-purple-500" /> Mouvements Auto
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        {(groupMovementPresets[group.id] || []).length > 0 ? (
-                          groupMovementPresets[group.id].map((move, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                setGroupMovements((prev: any) => ({
-                                  ...prev,
-                                  [group.id]: {
-                                    ...prev[group.id],
-                                    shape: move.shape,
-                                    speed: move.speed,
-                                    sizePan: move.sizePan,
-                                    sizeTilt: move.sizeTilt,
-                                    fan: move.fan,
-                                    invert180: move.invert180,
-                                    customPoints: move.customPoints || []
-                                  }
-                                }));
-                              }}
-                              className="px-3 h-10 bg-slate-800/50 hover:bg-purple-500/20 border border-white/5 hover:border-purple-500/30 rounded-lg text-[10px] font-bold text-slate-400 hover:text-purple-400 transition-all active:scale-95 shadow-lg"
-                            >
-                              {move.label || `Mouv ${idx + 1}`}
-                            </button>
-                          ))
-                        ) : (
-                          <span className="text-[8px] text-slate-600 italic">Aucun mouvement enregistré</span>
-                        )}
-                      </div>
+                      <Tooltip text="Raccourcis vers vos trajectoires et effets de mouvements sauvegardés.">
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-purple-400 cursor-help transition-colors" />
+                      </Tooltip>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(groupMovementPresets[group.id] || []).length > 0 ? (
+                        groupMovementPresets[group.id].map((move, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setGroupMovements((prev: any) => ({
+                                ...prev,
+                                [group.id]: {
+                                  ...prev[group.id],
+                                  shape: move.shape,
+                                  speed: move.speed,
+                                  sizePan: move.sizePan,
+                                  sizeTilt: move.sizeTilt,
+                                  fan: move.fan,
+                                  invert180: move.invert180,
+                                  customPoints: move.customPoints || []
+                                }
+                              }));
+                            }}
+                            className="px-3 h-10 bg-slate-800/50 hover:bg-purple-500/20 border border-white/5 hover:border-purple-500/30 rounded-lg text-[10px] font-bold text-slate-400 hover:text-purple-400 transition-all active:scale-95 shadow-lg"
+                          >
+                            {move.label || `Mouv ${idx + 1}`}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-[8px] text-slate-600 italic">Aucun mouvement</span>
+                      )}
                     </div>
                   </div>
                 </div>

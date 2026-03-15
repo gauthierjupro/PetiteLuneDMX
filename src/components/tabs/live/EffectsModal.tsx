@@ -1,8 +1,9 @@
 import React from 'react';
 import { Modal } from '../../ui/Modal';
-import { Move, Square, FastForward, RotateCcw, Save, Edit2, Link2, Link2Off, RefreshCcw, Plus, Trash2, Play, MousePointer2 } from 'lucide-react';
+import { Move, Square, FastForward, RotateCcw, Save, Edit2, Link2, Link2Off, RefreshCcw, Plus, Trash2, Play, MousePointer2, HelpCircle } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
+import { Tooltip } from '../../ui/Tooltip';
 
 interface EffectsModalProps {
   isOpen: boolean;
@@ -379,39 +380,42 @@ export const EffectsModal = ({
 
             <div className="flex gap-2">
               {[
-                { id: 'none', label: 'Aucun', icon: <Square className="w-4 h-4" /> },
-                { id: 'circle', label: 'Cercle', icon: <RotateCcw className="w-4 h-4" /> },
-                { id: 'eight', label: 'Huit', icon: <FastForward className="w-4 h-4" /> },
-                { id: 'pan_sweep', label: 'Pan', icon: <Move className="w-4 h-4" /> },
-                { id: 'tilt_sweep', label: 'Tilt', icon: <Move className="w-4 h-4 rotate-90" /> },
-                { id: 'custom', label: 'Custom', icon: <MousePointer2 className="w-4 h-4" /> }
+                { id: 'none', label: 'Aucun', icon: <Square className="w-4 h-4" />, tip: "Arrête tout mouvement et maintient la position centrale" },
+                { id: 'circle', label: 'Cercle', icon: <RotateCcw className="w-4 h-4" />, tip: "Mouvement circulaire fluide autour du centre" },
+                { id: 'eight', label: 'Huit', icon: <FastForward className="w-4 h-4" />, tip: "Mouvement en forme de 8 (infini)" },
+                { id: 'pan_sweep', label: 'Pan', icon: <Move className="w-4 h-4" />, tip: "Balayage horizontal uniquement" },
+                { id: 'tilt_sweep', label: 'Tilt', icon: <Move className="w-4 h-4 rotate-90" />, tip: "Balayage vertical uniquement" },
+                { id: 'custom', label: 'Custom', icon: <MousePointer2 className="w-4 h-4" />, tip: "Utilise une trajectoire point par point personnalisée" }
               ].map(shape => (
-                <button
-                  key={shape.id}
-                  onClick={() => updateConfig({ shape: shape.id })}
-                  className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
-                    config.shape === shape.id
-                    ? 'bg-blue-500 text-[#05070a] border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.3)]'
-                    : 'bg-slate-800/50 text-slate-400 border-white/5 hover:text-white hover:bg-slate-700/50'
-                  }`}
-                >
-                  {shape.icon} {shape.label}
-                </button>
+                <Tooltip key={shape.id} text={shape.tip}>
+                  <button
+                    onClick={() => updateConfig({ shape: shape.id })}
+                    className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
+                      config.shape === shape.id
+                      ? 'bg-blue-500 text-[#05070a] border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.3)]'
+                      : 'bg-slate-800/50 text-slate-400 border-white/5 hover:text-white hover:bg-slate-700/50'
+                    }`}
+                  >
+                    {shape.icon} {shape.label}
+                  </button>
+                </Tooltip>
               ))}
               
               <div className="w-px h-8 bg-white/10 mx-2 self-center" />
               
-              <button
-                onClick={() => updateConfig({ invert180: !config.invert180 })}
-                className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
-                  config.invert180
-                  ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]'
-                  : 'bg-slate-800/50 text-slate-400 border-white/5 hover:text-white hover:bg-slate-700/50'
-                }`}
-              >
-                <RotateCcw className={`w-4 h-4 ${config.invert180 ? 'rotate-180' : ''} transition-transform duration-500`} />
-                Symétrie (180°)
-              </button>
+              <Tooltip text="Inverse le mouvement pour chaque deuxième projecteur du groupe (effet miroir)">
+                <button
+                  onClick={() => updateConfig({ invert180: !config.invert180 })}
+                  className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
+                    config.invert180
+                    ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]'
+                    : 'bg-slate-800/50 text-slate-400 border-white/5 hover:text-white hover:bg-slate-700/50'
+                  }`}
+                >
+                  <RotateCcw className={`w-4 h-4 ${config.invert180 ? 'rotate-180' : ''} transition-transform duration-500`} />
+                  Symétrie (180°)
+                </button>
+              </Tooltip>
             </div>
           </div>
 
@@ -427,6 +431,19 @@ export const EffectsModal = ({
                   onChange={handleUpdatePoint}
                   size={360}
                 />
+                
+                <div className="absolute top-2 right-2 pointer-events-none opacity-0 group-hover/pad:opacity-100 transition-opacity">
+                  <div className="bg-black/60 backdrop-blur-md p-3 rounded-xl border border-white/10 space-y-2">
+                    <p className="text-[9px] font-black text-blue-400 uppercase flex items-center gap-2">
+                      <HelpCircle className="w-3 h-3" /> Aide PAD
+                    </p>
+                    <ul className="text-[8px] text-slate-300 space-y-1 font-medium">
+                      <li>• Glisser pour déplacer le centre</li>
+                      <li>• Rec : Cliquez sur "REC POINT"</li>
+                      <li>• Edit : Sélectionnez un point (jaune)</li>
+                    </ul>
+                  </div>
+                </div>
                 
                 {/* Visualisation du point fantôme (en cours de placement) */}
                 {isRecording && phantomPoint && selectedPointIndex === null && (
@@ -520,7 +537,12 @@ export const EffectsModal = ({
             {/* Colonne DROITE (Réglages et Trajectoires) */}
             <div className="col-span-7 flex flex-col gap-5 py-1 overflow-y-auto max-h-[700px] pr-1 custom-scrollbar">
               <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-5">
-                <p className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em] border-b border-blue-500/20 pb-2">Réglages du Mouvement</p>
+                <div className="flex items-center justify-between border-b border-blue-500/20 pb-2">
+                  <p className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em]">Réglages du Mouvement</p>
+                  <Tooltip text="Ajustez la vitesse, le décalage entre les projecteurs et l'amplitude de la forme">
+                    <HelpCircle className="w-4 h-4 text-slate-600 hover:text-blue-400 cursor-help transition-colors" />
+                  </Tooltip>
+                </div>
                 
                 <div className="grid grid-cols-2 gap-8">
                   <div className="space-y-5">
@@ -609,7 +631,12 @@ export const EffectsModal = ({
               <div className="p-5 bg-black/60 rounded-2xl border border-white/5 space-y-4">
                 <div className="flex justify-between items-center">
                   <p className="text-[11px] font-black text-red-400 uppercase tracking-[0.2em]">Trajectoire Point à Point</p>
-                  <span className="text-[10px] text-slate-600 italic">{(isRecording ? localCustomPoints : (config.customPoints || localCustomPoints)).length} points</span>
+                  <div className="flex items-center gap-3">
+                    <Tooltip text="Créez vos propres trajectoires en enregistrant une suite de points. Sélectionnez 'Custom' en haut pour les utiliser.">
+                      <HelpCircle className="w-4 h-4 text-slate-600 hover:text-red-400 cursor-help transition-colors" />
+                    </Tooltip>
+                    <span className="text-[10px] text-slate-600 italic">{(isRecording ? localCustomPoints : (config.customPoints || localCustomPoints)).length} points</span>
+                  </div>
                 </div>
                 
                 <div className="flex flex-wrap gap-3">
@@ -716,7 +743,12 @@ export const EffectsModal = ({
                 <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-black text-purple-400 uppercase tracking-[0.2em]">Bibliothèque</p>
-                    <span className="text-[9px] text-slate-500 italic">Clic Droit: Menu</span>
+                    <div className="flex items-center gap-2">
+                      <Tooltip text="Vos trajectoires sauvegardées. Clic droit pour renommer ou supprimer.">
+                        <HelpCircle className="w-4 h-4 text-slate-600 hover:text-purple-400 cursor-help transition-colors" />
+                      </Tooltip>
+                      <span className="text-[9px] text-slate-500 italic">Clic Droit: Menu</span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
                     {customTrajectories.map((traj) => (
@@ -744,7 +776,12 @@ export const EffectsModal = ({
                 <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em]">Presets MVT</p>
-                    <span className="text-[9px] text-slate-500 italic">Clic Droit: Sauver</span>
+                    <div className="flex items-center gap-2">
+                      <Tooltip text="Mémorisez des réglages complets (Forme + Vitesse + Taille). Clic droit pour sauvegarder les réglages actuels sur un preset.">
+                        <HelpCircle className="w-4 h-4 text-slate-600 hover:text-blue-400 cursor-help transition-colors" />
+                      </Tooltip>
+                      <span className="text-[9px] text-slate-500 italic">Clic Droit: Sauver</span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {mvtPresets.slice(0, 4).map((preset: any, i: number) => {
@@ -788,7 +825,12 @@ export const EffectsModal = ({
               <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Positions Mémorisées</p>
-                    <span className="text-[9px] text-slate-500 italic">Clic Droit: Sauver</span>
+                    <div className="flex items-center gap-2">
+                      <Tooltip text="Mémorisez des positions fixes (XY) pour vos lyres. Clic droit pour sauvegarder la position actuelle.">
+                        <HelpCircle className="w-4 h-4 text-slate-600 hover:text-white cursor-help transition-colors" />
+                      </Tooltip>
+                      <span className="text-[9px] text-slate-500 italic">Clic Droit: Sauver</span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-4 gap-3">
                     {positions.map((pos: any, i: number) => {

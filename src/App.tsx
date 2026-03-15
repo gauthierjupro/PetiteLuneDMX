@@ -38,6 +38,23 @@ interface CalibrationSettings {
   offsetTilt: number;
 }
 
+interface Fixture {
+  id: number;
+  name: string;
+  manufacturer: string;
+  model: string;
+  address: number;
+  channels: number;
+  type: string;
+}
+
+interface Group {
+  id: string;
+  name: string;
+  fixtureIds: number[];
+  isAmbiance?: boolean;
+}
+
 function App() {
   const APP_VERSION = "1.3.0";
   const [channels, setChannels] = useState<number[]>(Array(512).fill(0));
@@ -153,12 +170,12 @@ function App() {
   // --------------------------------------------------------------------------
   
   // Initialisation des fixtures depuis localStorage ou données par défaut
-  const [fixtures, setFixtures] = useState(() => {
+  const [fixtures, setFixtures] = useState<Fixture[]>(() => {
     const saved = localStorage.getItem('dmx_patched_fixtures');
     return saved ? JSON.parse(saved) : fixturesData;
   });
 
-  const [groups, setGroups] = useState(() => {
+  const [groups, setGroups] = useState<Group[]>(() => {
     const saved = localStorage.getItem('dmx_groups');
     return saved ? JSON.parse(saved) : groupsData;
   });
@@ -189,7 +206,7 @@ function App() {
     localStorage.setItem('dmx_fixture_calibration', JSON.stringify(fixtureCalibration));
   }, [groupMovements, groupPan, groupTilt, groupAutoColorActive, groupAutoGoboActive, groupPulseActive, groupIntensities, groupColors, groupGobos, groupPositions, groupMovementPresets, fixtureCalibration]);
 
-  const getFixtureById = (id: number | null) => fixtures.find((f: any) => f.id === id);
+  const getFixtureById = (id: number | null) => fixtures.find((f: Fixture) => f.id === id);
 
   // Sync avec le backend Rust
   useEffect(() => {
@@ -256,7 +273,7 @@ function App() {
 
   const handleMultiFixtureAction = async (fixtureIds: number[], action: 'dimmer' | 'color' | 'strobe' | 'pan' | 'tilt', value: any) => {
     for (const fixtureId of fixtureIds) {
-      const fixture = fixtures.find((f: any) => f.id === fixtureId);
+      const fixture = fixtures.find((f: Fixture) => f.id === fixtureId);
       if (!fixture) continue;
 
       const start = fixture.address - 1;
@@ -283,11 +300,11 @@ function App() {
   };
 
   const handleGroupAction = async (groupId: string, action: 'dimmer' | 'color' | 'strobe', value: any) => {
-    const group = groups.find((g: any) => g.id === groupId);
+    const group = groups.find((g: Group) => g.id === groupId);
     if (!group) return;
 
     for (const fixtureId of group.fixtureIds) {
-      const fixture = fixtures.find((f: any) => f.id === fixtureId);
+      const fixture = fixtures.find((f: Fixture) => f.id === fixtureId);
       if (!fixture) continue;
 
       const start = fixture.address - 1;
@@ -315,24 +332,24 @@ function App() {
   };
 
   const handleRenameGroup = (groupId: string, newName: string) => {
-    setGroups((prev: any[]) => prev.map((g: any) => g.id === groupId ? { ...g, name: newName } : g));
+    setGroups((prev: Group[]) => prev.map((g: Group) => g.id === groupId ? { ...g, name: newName } : g));
   };
 
   const handleCreateGroup = (name: string) => {
     const id = name.toLowerCase().replace(/\s+/g, '_');
-    setGroups((prev: any[]) => [...prev, { id, name, fixtureIds: [], isAmbiance: false }]);
+    setGroups((prev: Group[]) => [...prev, { id, name, fixtureIds: [], isAmbiance: false }]);
   };
 
   const handleDeleteGroup = (groupId: string) => {
-    setGroups((prev: any[]) => prev.filter((g: any) => g.id !== groupId));
+    setGroups((prev: Group[]) => prev.filter((g: Group) => g.id !== groupId));
   };
 
   const handleUpdateGroupFixtures = (groupId: string, fixtureIds: number[]) => {
-    setGroups((prev: any[]) => prev.map((g: any) => g.id === groupId ? { ...g, fixtureIds } : g));
+    setGroups((prev: Group[]) => prev.map((g: Group) => g.id === groupId ? { ...g, fixtureIds } : g));
   };
 
   const handleToggleGroupAmbiance = (groupId: string) => {
-    setGroups((prev: any[]) => prev.map((g: any) => g.id === groupId ? { ...g, isAmbiance: !g.isAmbiance } : g));
+    setGroups((prev: Group[]) => prev.map((g: Group) => g.id === groupId ? { ...g, isAmbiance: !g.isAmbiance } : g));
   };
 
   const handlePanChange = (val: string) => {
@@ -348,18 +365,18 @@ function App() {
   };
 
   const handleUpdateAddress = (fixtureId: number, newAddress: number) => {
-    setFixtures((prev: any[]) => prev.map((f: any) => f.id === fixtureId ? { ...f, address: newAddress } : f));
+    setFixtures((prev: Fixture[]) => prev.map((f: Fixture) => f.id === fixtureId ? { ...f, address: newAddress } : f));
   };
 
   const handleAddFixture = (newFixture: any) => {
-    setFixtures((prev: any[]) => {
-      const nextId = prev.length > 0 ? Math.max(...prev.map((f: any) => f.id)) + 1 : 1;
+    setFixtures((prev: Fixture[]) => {
+      const nextId = prev.length > 0 ? Math.max(...prev.map((f: Fixture) => f.id)) + 1 : 1;
       return [...prev, { ...newFixture, id: nextId }];
     });
   };
 
   const handleDeleteFixture = (id: number) => {
-    setFixtures((prev: any[]) => prev.filter((f: any) => f.id !== id));
+    setFixtures((prev: Fixture[]) => prev.filter((f: Fixture) => f.id !== id));
   };
 
   const handleIdentify = async (fixtureId: number) => {
@@ -391,7 +408,7 @@ function App() {
   // Logique du générateur de mouvements (Shapes)
   useEffect(() => {
     const activeGroups = Object.keys(groupMovements).filter((id: string) => 
-      groupMovements[id]?.shape !== 'none' && groups.some(g => g.id === id)
+      groupMovements[id]?.shape !== 'none' && groups.some((g: Group) => g.id === id)
     );
     
     if (activeGroups.length === 0) {
@@ -405,7 +422,7 @@ function App() {
       const newLivePositions: Record<string, { pan: number, tilt: number }> = {};
 
       activeGroups.forEach((groupId: string) => {
-        const group = groups.find(g => g.id === groupId);
+        const group = groups.find((g: Group) => g.id === groupId);
         const config = groupMovements[groupId];
         if (!group || !config) return;
 
@@ -460,7 +477,7 @@ function App() {
         };
 
         group.fixtureIds.forEach((id: number, index: number) => {
-          const fixture = fixtures.find(f => f.id === id);
+          const fixture = fixtures.find((f: Fixture) => f.id === id);
           if (fixture && fixture.type === 'Moving Head') {
             const phase = elapsed * speed + (index * (fan / 255) * Math.PI * 2);
             let panOffset = 0;
@@ -531,8 +548,8 @@ function App() {
 
   // Logique Auto-Color
   useEffect(() => {
-    const activeGroups = Object.keys(groupAutoColorActive).filter(id => 
-      groupAutoColorActive[id] === true && groups.some(g => g.id === id)
+    const activeGroups = Object.keys(groupAutoColorActive).filter((id: string) => 
+      groupAutoColorActive[id] === true && groups.some((g: Group) => g.id === id)
     );
     
     if (activeGroups.length === 0) {
@@ -549,18 +566,18 @@ function App() {
 
     const interval = setInterval(() => {
       const newLiveColors: Record<string, number> = {};
-      activeGroups.forEach(groupId => {
-        const group = groups.find(g => g.id === groupId);
+      activeGroups.forEach((groupId: string) => {
+        const group = groups.find((g: Group) => g.id === groupId);
         if (group) {
-          const hasMovingHead = fixtures.some(f => group.fixtureIds.includes(f.id) && f.type === 'Moving Head');
+          const hasMovingHead = fixtures.some((f: Fixture) => group.fixtureIds.includes(f.id) && f.type === 'Moving Head');
           if (hasMovingHead) {
             // Cycle plus lent pour les lyres (Color Wheel), changement toutes les 1.5 secondes
             const colorIndex = Math.floor((Date.now() / 1500) % wheelColors.length);
             const color = wheelColors[colorIndex];
             newLiveColors[groupId] = color.v;
             
-            group.fixtureIds.forEach(id => {
-              const f = fixtures.find(fx => fx.id === id);
+            group.fixtureIds.forEach((id: number) => {
+              const f = fixtures.find((fx: Fixture) => fx.id === id);
               if (f && f.type === 'Moving Head') {
                 updateDmx(f.address + 5, color.v);   // PicoSpot CH6 : Color Wheel (address+5)
               }
@@ -569,8 +586,8 @@ function App() {
             const currentHue = (Date.now() / 20) % 360;
             const { r, g, b } = hslToRgb(currentHue, 100, 50);
             
-            group.fixtureIds.forEach(id => {
-              const f = fixtures.find(fx => fx.id === id);
+            group.fixtureIds.forEach((id: number) => {
+              const f = fixtures.find((fx: Fixture) => fx.id === id);
               if (f && f.type === 'RGB') {
                 updateDmx(f.address, r);             // Canal 2 : Rouge
                 updateDmx(f.address + 1, g);         // Canal 3 : Vert
@@ -588,8 +605,8 @@ function App() {
 
   // Logique du mode Pulse (synchronisé sur le BPM)
   useEffect(() => {
-    const activeGroups = Object.keys(groupPulseActive).filter(id => 
-      groupPulseActive[id] === true && groups.some(g => g.id === id)
+    const activeGroups = Object.keys(groupPulseActive).filter((id: string) => 
+      groupPulseActive[id] === true && groups.some((g: Group) => g.id === id)
     );
     
     if (activeGroups.length === 0) return;
@@ -603,11 +620,11 @@ function App() {
       const decay = Math.pow(1 - progress, 2);
       const currentIntensity = Math.round(255 * decay);
       
-      activeGroups.forEach(groupId => {
-        const group = groups.find(g => g.id === groupId);
+      activeGroups.forEach((groupId: string) => {
+        const group = groups.find((g: Group) => g.id === groupId);
         if (group) {
-          group.fixtureIds.forEach(id => {
-            const fixture = fixtures.find(f => f.id === id);
+          group.fixtureIds.forEach((id: number) => {
+            const fixture = fixtures.find((f: Fixture) => f.id === id);
             if (fixture) {
               const start = fixture.address - 1;
               if (fixture.type === 'RGB') {
@@ -628,8 +645,8 @@ function App() {
 
   // Logique Auto-Gobo
   useEffect(() => {
-    const activeGroups = Object.keys(groupAutoGoboActive).filter(id => 
-      groupAutoGoboActive[id] === true && groups.some(g => g.id === id)
+    const activeGroups = Object.keys(groupAutoGoboActive).filter((id: string) => 
+      groupAutoGoboActive[id] === true && groups.some((g: Group) => g.id === id)
     );
     
     if (activeGroups.length === 0) {
@@ -639,16 +656,16 @@ function App() {
 
     const interval = setInterval(() => {
       const newLiveGobos: Record<string, number> = {};
-      activeGroups.forEach(groupId => {
-        const group = groups.find(g => g.id === groupId);
+      activeGroups.forEach((groupId: string) => {
+        const group = groups.find((g: Group) => g.id === groupId);
         if (group) {
           // Cycle des gobos (0-7), changement toutes les 2 secondes
           const goboIndex = Math.floor((Date.now() / 2000) % 8);
           const dmxValue = goboIndex * 32;
           newLiveGobos[groupId] = goboIndex;
           
-          group.fixtureIds.forEach(id => {
-            const f = fixtures.find(fx => fx.id === id);
+          group.fixtureIds.forEach((id: number) => {
+            const f = fixtures.find((fx: Fixture) => fx.id === id);
             if (f && f.type === 'Moving Head') {
               updateDmx(f.address + 6, dmxValue);   // PicoSpot CH7 : Gobo (address+6)
             }
