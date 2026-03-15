@@ -56,7 +56,7 @@ interface Group {
 }
 
 function App() {
-  const APP_VERSION = "1.3.0";
+  const APP_VERSION = "1.6.0";
   const [channels, setChannels] = useState<number[]>(Array(512).fill(0));
   const [isConnected, setIsConnected] = useState(false);
   const [pan, setPan] = useState(127);
@@ -162,6 +162,11 @@ function App() {
     return saved ? JSON.parse(saved) : {};
   });
 
+  const [masterDimmer, setMasterDimmer] = useState<number>(() => {
+    const saved = localStorage.getItem('dmx_master_dimmer');
+    return saved ? parseInt(saved) : 255;
+  });
+
   const [bpm, setBpm] = useState(120);
 
   const [liveGroupPositions, setLiveGroupPositions] = useState<Record<string, { pan: number, tilt: number }>>({});
@@ -204,7 +209,8 @@ function App() {
     localStorage.setItem('dmx_group_positions', JSON.stringify(groupPositions));
     localStorage.setItem('dmx_group_movement_presets', JSON.stringify(groupMovementPresets));
     localStorage.setItem('dmx_fixture_calibration', JSON.stringify(fixtureCalibration));
-  }, [groupMovements, groupPan, groupTilt, groupAutoColorActive, groupAutoGoboActive, groupPulseActive, groupIntensities, groupColors, groupGobos, groupPositions, groupMovementPresets, fixtureCalibration]);
+    localStorage.setItem('dmx_master_dimmer', masterDimmer.toString());
+  }, [groupMovements, groupPan, groupTilt, groupAutoColorActive, groupAutoGoboActive, groupPulseActive, groupIntensities, groupColors, groupGobos, groupPositions, groupMovementPresets, fixtureCalibration, masterDimmer]);
 
   const getFixtureById = (id: number | null) => fixtures.find((f: Fixture) => f.id === id);
 
@@ -249,15 +255,24 @@ function App() {
     }
   };
 
+  const computeFinalIntensity = (fixtureId: number, baseValue: number, currentMaster?: number) => {
+    // On trouve le groupe de cette fixture
+    const group = groups.find((g: Group) => g.fixtureIds.includes(fixtureId));
+    const groupDim = group ? (groupIntensities[group.id]?.dim ?? 255) : 255;
+    
+    const master = currentMaster !== undefined ? currentMaster : masterDimmer;
+    
+    // Formule multiplicative : Base * (Groupe/255) * (Master/255)
+    return Math.round(baseValue * (groupDim / 255) * (master / 255));
+  };
+
+  const applyGlobalIntensity = async (val: number) => {
+    // Cette fonction est maintenant obsolète car gérée par la boucle Master
+  };
+
   const handleMasterDimmer = async (val: number) => {
-    for (const fixture of fixtures) {
-      const start = fixture.address - 1;
-      if (fixture.type === 'RGB') {
-        await updateDmx(start, val);
-      } else if (fixture.type === 'Moving Head') {
-        await updateDmx(start + 5, val); // CH6 pour PicoSpot
-      }
-    }
+    setMasterDimmer(val);
+    // Plus besoin d'envoyer DMX ici, la boucle Master s'en charge à 50Hz
   };
 
   const handleMasterStrobe = async (val: number) => {
@@ -279,9 +294,7 @@ function App() {
       const start = fixture.address - 1;
 
       if (action === 'dimmer') {
-        if (fixture.type === 'RGB') await updateDmx(start, value);
-        else if (fixture.type === 'Moving Head') await updateDmx(start + 5, value);
-        else if (fixture.type === 'Effect') await updateDmx(start, value);
+        // La boucle Master s'en chargera via groupIntensities
       } else if (action === 'strobe') {
         if (fixture.type === 'RGB') await updateDmx(start + 4, value);
         else if (fixture.type === 'Moving Head') await updateDmx(start + 8, value);
@@ -303,19 +316,18 @@ function App() {
     const group = groups.find((g: Group) => g.id === groupId);
     if (!group) return;
 
+    if (action === 'dimmer') {
+       // La boucle Master s'en chargera via groupIntensities
+       return;
+    }
+
     for (const fixtureId of group.fixtureIds) {
       const fixture = fixtures.find((f: Fixture) => f.id === fixtureId);
       if (!fixture) continue;
 
       const start = fixture.address - 1;
 
-      if (action === 'dimmer') {
-        if (fixture.type === 'RGB') {
-          await updateDmx(start, value);
-        } else if (fixture.type === 'Moving Head') {
-          await updateDmx(start + 5, value);
-        }
-      } else if (action === 'strobe') {
+      if (action === 'strobe') {
         if (fixture.type === 'RGB') {
           await updateDmx(start + 4, value);
         } else if (fixture.type === 'Moving Head') {
@@ -404,6 +416,52 @@ function App() {
   };
 
   // --- LOGIQUE DU MOTEUR DMX EN ARRIÈRE-PLAN ---
+
+  // Boucle Master d'intensité (50fps) - Gère Dimmers + Pulse sans conflits
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const beatDuration = (60 / bpm) * 1000;
+      const elapsed = Date.now();
+      const progress = (elapsed % beatDuration) / beatDuration;
+      const decay = Math.pow(1 - progress, 2);
+      const pulseVal = Math.round(255 * decay);
+
+      fixtures.forEach(fixture => {
+        const group = groups.find(g => g.fixtureIds.includes(fixture.id));
+        const groupId = group?.id;
+        
+        // Intensités de base (statiques)
+        const groupDim = groupId ? (groupIntensities[groupId]?.dim ?? 255) : 255;
+        const masterLimit = masterDimmer / 255;
+        const localLimit = groupDim / 255;
+        
+        let finalIntensity = 0;
+
+        // On vérifie si le Pulse global est actif OU si le pulse spécifique au groupe est actif
+        const isPulseActive = (groupId && groupPulseActive[groupId]);
+
+        if (isPulseActive) {
+          // Si Pulse actif : 0 -> 100% limité par les dimmers
+          finalIntensity = Math.round(pulseVal * localLimit * masterLimit);
+        } else {
+          // Sinon : intensité statique normale
+          finalIntensity = Math.round(255 * localLimit * masterLimit);
+        }
+
+        const start = fixture.address - 1;
+        // Envoi direct au backend pour fluidité maximale
+        if (fixture.type === 'RGB') {
+          invoke('update_dmx', { channel: start + 1, value: finalIntensity }).catch(() => {});
+        } else if (fixture.type === 'Moving Head') {
+          invoke('update_dmx', { channel: start + 6, value: finalIntensity }).catch(() => {});
+        } else if (fixture.type === 'Effect') {
+          invoke('update_dmx', { channel: start + 1, value: finalIntensity }).catch(() => {});
+        }
+      });
+    }, 20);
+
+    return () => clearInterval(interval);
+  }, [fixtures, groups, groupIntensities, masterDimmer, groupPulseActive, bpm]);
 
   // Logique du générateur de mouvements (Shapes)
   useEffect(() => {
@@ -605,43 +663,8 @@ function App() {
 
   // Logique du mode Pulse (synchronisé sur le BPM)
   useEffect(() => {
-    const activeGroups = Object.keys(groupPulseActive).filter((id: string) => 
-      groupPulseActive[id] === true && groups.some((g: Group) => g.id === id)
-    );
-    
-    if (activeGroups.length === 0) return;
-
-    const interval = setInterval(() => {
-      const beatDuration = (60 / bpm) * 1000;
-      const elapsed = Date.now();
-      const progress = (elapsed % beatDuration) / beatDuration;
-      
-      // Courbe de décroissance exponentielle pour un effet "impact"
-      const decay = Math.pow(1 - progress, 2);
-      const currentIntensity = Math.round(255 * decay);
-      
-      activeGroups.forEach((groupId: string) => {
-        const group = groups.find((g: Group) => g.id === groupId);
-        if (group) {
-          group.fixtureIds.forEach((id: number) => {
-            const fixture = fixtures.find((f: Fixture) => f.id === id);
-            if (fixture) {
-              const start = fixture.address - 1;
-              if (fixture.type === 'RGB') {
-                updateDmx(start, currentIntensity);
-              } else if (fixture.type === 'Moving Head') {
-                updateDmx(start + 5, currentIntensity);
-              } else if (fixture.type === 'Effect') {
-                updateDmx(start, currentIntensity);
-              }
-            }
-          });
-        }
-      });
-    }, 30); // 33fps pour une fluidité correcte
-
-    return () => clearInterval(interval);
-  }, [groupPulseActive, bpm, groups, fixtures]);
+    // Cette logique est maintenant intégrée dans la boucle Master ci-dessus
+  }, []);
 
   // Logique Auto-Gobo
   useEffect(() => {
@@ -760,6 +783,8 @@ function App() {
             handleGroupAction={handleGroupAction}
             handleMultiFixtureAction={handleMultiFixtureAction}
             handleMasterDimmer={handleMasterDimmer}
+            applyGlobalIntensity={applyGlobalIntensity}
+            masterDimmer={masterDimmer}
             handleMasterStrobe={handleMasterStrobe}
             onRenameGroup={handleRenameGroup}
             

@@ -104,6 +104,33 @@ export const MovementSection = ({
     return (dmxValue / 255) * 100;
   };
 
+  const getLiveColor = (groupId: string) => {
+    const group = groups.find(g => g.id === groupId);
+    if (!group || !group.fixtureIds || group.fixtureIds.length === 0) return groupColors[groupId] || { r: 255, g: 255, b: 255 };
+    
+    const firstFixtureId = group.fixtureIds[0];
+    const fixture = fixtures.find(f => f.id === firstFixtureId);
+    
+    if (!fixture) return groupColors[groupId] || { r: 255, g: 255, b: 255 };
+    
+    const address = fixture.address - 1;
+    
+    if (fixture.type === 'Moving Head') {
+      const v = channels[address + 5] || 0;
+      // Correspondance simplifiée de la roue de couleur PicoSpot
+      if (v < 10) return { r: 255, g: 255, b: 255 }; // Blanc
+      if (v < 21) return { r: 255, g: 0,   b: 0   }; // Rouge
+      if (v < 32) return { r: 255, g: 128, b: 0   }; // Orange
+      if (v < 43) return { r: 255, g: 255, b: 0   }; // Jaune
+      if (v < 54) return { r: 0,   g: 255, b: 0   }; // Vert
+      if (v < 65) return { r: 0,   g: 0,   b: 255 }; // Bleu
+      if (v < 76) return { r: 0,   g: 255, b: 255 }; // Cyan
+      if (v < 87) return { r: 255, g: 0,   b: 255 }; // Magenta
+    }
+    
+    return groupColors[groupId] || { r: 255, g: 255, b: 255 };
+  };
+
   const movingHeadGroups = groups.filter(g => fixtures.some(f => g.fixtureIds.includes(f.id) && f.type === 'Moving Head'));
 
   if (movingHeadGroups.length === 0) return null;
@@ -132,6 +159,7 @@ export const MovementSection = ({
       <div className="grid grid-cols-2 gap-6">
         {movingHeadGroups.map(group => {
           const liveHeight = getLiveIntensity(group.id);
+          const liveColor = getLiveColor(group.id);
           const firstFixtureId = group.fixtureIds[0];
           const fixture = fixtures.find(f => f.id === firstFixtureId);
           const isPicoSpot = fixture?.model === 'PicoSpot 20';
@@ -152,10 +180,10 @@ export const MovementSection = ({
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3">
                     <div 
-                       className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-lg"
+                       className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-lg transition-all duration-300"
                        style={{ 
-                         backgroundColor: `rgb(${groupColors[group.id]?.r || 255}, ${groupColors[group.id]?.g || 255}, ${groupColors[group.id]?.b || 255})`,
-                         boxShadow: `0 0 10px rgb(${groupColors[group.id]?.r || 0}, ${groupColors[group.id]?.g || 0}, ${groupColors[group.id]?.b || 0})`
+                         backgroundColor: `rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`,
+                         boxShadow: `0 0 10px rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`
                        }}
                     />
                     <div className="w-20 h-1 bg-slate-900 rounded-full overflow-hidden relative shadow-inner">

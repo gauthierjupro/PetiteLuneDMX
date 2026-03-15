@@ -65,7 +65,42 @@ export const AmbianceCard = ({
     return (dmxValue / 255) * 100;
   };
 
+  // Calculer la couleur réelle du voyant à partir du flux DMX
+  const getLiveColor = () => {
+    if (!group.fixtureIds || group.fixtureIds.length === 0) return color;
+    
+    const firstFixtureId = group.fixtureIds[0];
+    const fixture = fixtures.find(f => f.id === firstFixtureId);
+    
+    if (!fixture) return color;
+    
+    const address = fixture.address - 1;
+    
+    if (fixture.type === 'RGB') {
+      return {
+        r: channels[address + 1] ?? color.r,
+        g: channels[address + 2] ?? color.g,
+        b: channels[address + 3] ?? color.b
+      };
+    } else if (fixture.type === 'Moving Head') {
+      const v = channels[address + 5] || 0;
+      // Correspondance simplifiée de la roue de couleur PicoSpot
+      if (v < 10) return { r: 255, g: 255, b: 255 }; // Blanc
+      if (v < 21) return { r: 255, g: 0,   b: 0   }; // Rouge
+      if (v < 32) return { r: 255, g: 128, b: 0   }; // Orange
+      if (v < 43) return { r: 255, g: 255, b: 0   }; // Jaune
+      if (v < 54) return { r: 0,   g: 255, b: 0   }; // Vert
+      if (v < 65) return { r: 0,   g: 0,   b: 255 }; // Bleu
+      if (v < 76) return { r: 0,   g: 255, b: 255 }; // Cyan
+      if (v < 87) return { r: 255, g: 0,   b: 255 }; // Magenta
+      return color; // Valeur par défaut si inconnu (ex: rotation)
+    }
+    
+    return color;
+  };
+
   const liveHeight = getLiveIntensity();
+  const liveColor = getLiveColor();
 
   return (
     <div className={`bg-[#111317] border rounded-3xl p-4 shadow-xl relative overflow-hidden min-h-[200px] flex gap-4 max-w-[420px] transition-all duration-300 ${isLinked ? 'border-cyan-500/30 opacity-60 grayscale-[0.3]' : 'border-amber-500/60 ring-1 ring-amber-500/20 shadow-amber-500/10'}`}>
@@ -123,8 +158,8 @@ export const AmbianceCard = ({
            <div 
              className="w-4 h-4 rounded-full transition-all duration-300" 
              style={{ 
-               backgroundColor: `rgb(${color.r}, ${color.g}, ${color.b})`,
-               boxShadow: `0 0 10px rgb(${color.r}, ${color.g}, ${color.b})`
+               backgroundColor: `rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`,
+               boxShadow: `0 0 10px rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`
              }}
            />
            <div className="w-2 h-32 bg-slate-900 rounded-full overflow-hidden relative shadow-inner">
@@ -135,9 +170,9 @@ export const AmbianceCard = ({
            </div>
          </div>
          <div className="flex flex-col gap-1 items-center mb-2">
-           <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">R:{color.r}</span>
-           <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">G:{color.g}</span>
-           <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">B:{color.b}</span>
+           <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">R:{liveColor.r}</span>
+           <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">G:{liveColor.g}</span>
+           <span className="text-[9px] font-mono text-slate-500 uppercase tracking-tighter">B:{liveColor.b}</span>
          </div>
       </div>
     </div>

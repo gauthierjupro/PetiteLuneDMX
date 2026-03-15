@@ -113,6 +113,7 @@ export const AmbianceSection = ({
                 currentMasterIntensity={currentMasterIntensity}
                 channels={channels}
                 fixtures={fixtures}
+                groups={ambianceGroups}
                 linkedGroups={linkedGroups}
               />
             )}

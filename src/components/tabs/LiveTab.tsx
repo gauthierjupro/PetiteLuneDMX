@@ -33,6 +33,8 @@ interface LiveTabProps {
   handleMultiFixtureAction: (fixtureIds: number[], action: 'dimmer' | 'color' | 'strobe' | 'pan' | 'tilt', value: any) => void;
   handleGroupAction: (groupId: string, action: 'dimmer' | 'color' | 'strobe', value: any) => void;
   handleMasterDimmer: (val: number) => void;
+  applyGlobalIntensity: (val: number) => void;
+  masterDimmer: number;
   handleMasterStrobe: (val: number) => void;
   onRenameGroup: (groupId: string, newName: string) => void;
 
@@ -81,7 +83,7 @@ export const LiveTab = (props: LiveTabProps) => {
   const {
     fixtures, channels, pan, tilt, groups, selectedGroup, setSelectedGroup,
     selectedFixtures, setSelectedFixtures, updateDmx, handlePanChange, handleTiltChange,
-    handleMultiFixtureAction, handleGroupAction, handleMasterDimmer, handleMasterStrobe,
+    handleMultiFixtureAction, handleGroupAction, handleMasterDimmer, applyGlobalIntensity, masterDimmer, handleMasterStrobe,
     onRenameGroup, groupIntensities, setGroupIntensities, groupColors, setGroupColors,
     groupPulseActive, setGroupPulseActive, bpm, setBpm, groupMovements, setGroupMovements,
     groupPan, setGroupPan, groupTilt, setGroupTilt, groupAutoColorActive, setGroupAutoColorActive,
@@ -93,7 +95,7 @@ export const LiveTab = (props: LiveTabProps) => {
 
   const logic = useLiveLogic({
     fixtures, channels, groups, updateDmx, handleMultiFixtureAction,
-    handleMasterDimmer, handleMasterStrobe, groupIntensities, setGroupIntensities,
+    handleMasterDimmer, applyGlobalIntensity, masterDimmer, handleMasterStrobe, groupIntensities, setGroupIntensities,
     groupColors, setGroupColors, groupPulseActive, setGroupPulseActive, bpm, setBpm,
     groupAutoColorActive, setGroupAutoColorActive, groupAutoGoboActive, setGroupAutoGoboActive,
     groupGobos, setGroupGobos, groupPan, setGroupPan, groupTilt, setGroupTilt,
@@ -102,7 +104,7 @@ export const LiveTab = (props: LiveTabProps) => {
 
   const {
     isBeatActive, isAudioActive, setIsAudioActive, audioDevices, selectedAudioDeviceId,
-    setSelectedAudioDeviceId, audioStats, linkedGroups, masterVal, globalStrobe,
+    setSelectedAudioDeviceId, audioStats, linkedGroups, globalStrobe,
     isAmbianceAutoColorActive, isAmbiancePulseActive, groupStrobeValues, setGroupStrobeValues,
     currentMasterIntensity, activeMacro, fadeTime, setFadeTime, customPresets, setCustomPresets,
     userColors, setUserColors, isCalibrationOpen, setIsCalibrationOpen, isStrobeModalOpen,
@@ -131,7 +133,7 @@ export const LiveTab = (props: LiveTabProps) => {
         
         {/* SECTION MASTER GLOBAL (Format Ultra-Compact) */}
         <MasterGlobalSection 
-          masterVal={masterVal}
+          masterVal={masterDimmer}
           globalStrobe={globalStrobe}
           handleGlobalAction={handleGlobalAction}
           handleEndOfSong={handleEndOfSong}

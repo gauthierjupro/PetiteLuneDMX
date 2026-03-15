@@ -40,6 +40,8 @@ interface UseLiveLogicProps {
   updateDmx: (ch: number, val: string | number) => void;
   handleMultiFixtureAction: (fixtureIds: number[], action: 'dimmer' | 'color' | 'strobe' | 'pan' | 'tilt', value: any) => void;
   handleMasterDimmer: (val: number) => void;
+  applyGlobalIntensity: (val: number) => void;
+  masterDimmer: number;
   handleMasterStrobe: (val: number) => void;
   
   groupIntensities: Record<string, {dim: number, str: number}>;
@@ -71,6 +73,8 @@ export const useLiveLogic = ({
   updateDmx,
   handleMultiFixtureAction,
   handleMasterDimmer,
+  applyGlobalIntensity,
+  masterDimmer,
   handleMasterStrobe,
   groupIntensities,
   setGroupIntensities,
@@ -107,7 +111,6 @@ export const useLiveLogic = ({
     return saved ? JSON.parse(saved) : [];
   });
   
-  const [masterVal, setMasterVal] = React.useState(255);
   const [globalStrobe, setGlobalStrobe] = React.useState(0);
   const [isAutoColorActive, setIsAutoColorActive] = React.useState(false);
   const [isPulseActive, setIsPulseActive] = React.useState(false);
@@ -123,7 +126,7 @@ export const useLiveLogic = ({
     return saved ? JSON.parse(saved) : { master: 128 };
   });
 
-  const [currentMasterIntensity, setCurrentMasterIntensity] = React.useState(255);
+  const [currentMasterIntensity, setCurrentMasterIntensity] = React.useState(masterDimmer);
   const [activeMacro, setActiveMacro] = React.useState<string | null>(null);
   const [fadeTime, setFadeTime] = React.useState(0);
 
@@ -312,7 +315,6 @@ export const useLiveLogic = ({
 
   const handleGlobalAction = React.useCallback((action: 'dimmer' | 'color' | 'strobe', value: any) => {
     if (action === 'dimmer') {
-      setMasterVal(value);
       setCurrentMasterIntensity(value);
       handleMasterDimmer(value);
       if (value === 0 || value === 255) {
@@ -537,8 +539,7 @@ export const useLiveLogic = ({
   // Pulse logic
   React.useEffect(() => {
     if (!isPulseActive) {
-      setCurrentMasterIntensity(masterVal);
-      handleMasterDimmer(masterVal);
+      setCurrentMasterIntensity(masterDimmer);
       return;
     }
     const startTime = Date.now();
@@ -547,15 +548,14 @@ export const useLiveLogic = ({
       const elapsed = Date.now() - startTime;
       const progress = (elapsed % beatDuration) / beatDuration;
       const decay = Math.pow(1 - progress, 2);
-      const currentIntensity = Math.round(255 * decay);
+      const currentIntensity = Math.round(masterDimmer * decay); 
       if (currentIntensity !== pulseIntensityRef.current) {
         pulseIntensityRef.current = currentIntensity;
         setCurrentMasterIntensity(currentIntensity);
-        handleMasterDimmer(currentIntensity);
       }
     }, 30);
     return () => clearInterval(interval);
-  }, [isPulseActive, bpm, masterVal, handleMasterDimmer]);
+  }, [isPulseActive, bpm, masterDimmer]);
 
   const toggleGroupLink = React.useCallback((groupId: string) => {
     setLinkedGroups((prev: string[]) => {
@@ -648,7 +648,7 @@ export const useLiveLogic = ({
     // States
     presets, tapTimes, isBeatActive, isAudioActive, setIsAudioActive,
     audioDevices, selectedAudioDeviceId, setSelectedAudioDeviceId, audioStats,
-    linkedGroups, masterVal, globalStrobe, isAutoColorActive, setIsAutoColorActive,
+    linkedGroups, masterDimmer, globalStrobe, isAutoColorActive, setIsAutoColorActive,
     isPulseActive, setIsPulseActive, isAmbianceAutoColorActive, setIsAmbianceAutoColorActive,
     isAmbiancePulseActive, setIsAmbiancePulseActive, groupStrobeValues, setGroupStrobeValues,
     currentMasterIntensity, activeMacro, fadeTime, setFadeTime, customPresets, setCustomPresets,
