@@ -64,17 +64,15 @@ const DmxChannelSlider = React.memo(({
 
   // Synchronisation forcée avec l'univers DMX global
   React.useEffect(() => {
-    if (!isManualMode && !isDragging) {
-      setLocalVal(value);
-    }
-  }, [value, isManualMode, isDragging]);
+    setLocalVal(value);
+  }, [value]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVal = parseInt(e.target.value);
-    setLocalVal(newVal); // Mise à jour UI instantanée (60fps)
     
     // Si on est en mode manuel, on envoie les valeurs à Rust
     if (isManualMode && newVal !== lastSentVal.current) {
+      setLocalVal(newVal); // Mise à jour UI instantanée (60fps)
       lastSentVal.current = newVal;
       updateDmx(chAddr - 1, newVal);
     }
@@ -135,7 +133,7 @@ const DmxChannelSlider = React.memo(({
             style={{ bottom: `calc(${(localVal / 255) * 100}% - 4px)` }}
           />
         </div>
-        <span className="text-[9px] font-mono font-black text-cyan-400">{localVal}</span>
+        <span className="text-[9px] font-mono font-black text-cyan-400">{Math.round(localVal)}</span>
         <span className="text-[9px] font-black uppercase tracking-tighter text-slate-500 max-w-[40px] truncate">{label}</span>
         <span className="text-[8px] font-mono font-black text-slate-500">CH{chAddr}</span>
       </div>

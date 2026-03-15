@@ -31,7 +31,7 @@
     "name": "LED Flood Panel 150 [4]",
     "manufacturer": "Stairville",
     "model": "LED Flood Panel 150",
-    "address": 152,
+    "address": 161,
     "channels": 8,
     "type": "RGB"
   },

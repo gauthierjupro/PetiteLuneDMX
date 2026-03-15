@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import {
   Zap,
@@ -17,22 +17,29 @@ import {
 
 import fixturesData from './data/fixtures_patch.json';
 import groupsData from './data/groups.json';
+import { hslToRgb } from './utils/colorUtils';
 
 // Components
 import { LiveTab } from './components/tabs/LiveTab';
 import { FixturesTab } from './components/tabs/FixturesTab';
 import { PatchTab } from './components/tabs/PatchTab';
-import { EffectsTab } from './components/tabs/EffectsTab';
 import { DmxConsoleTab } from './components/tabs/DmxConsoleTab';
 import { StageTab } from './components/tabs/StageTab';
 import { FixtureEditorTab } from './components/tabs/FixtureEditorTab';
 import { GlassCard } from './components/ui/GlassCard';
 import { AboutModal } from './components/ui/AboutModal';
 
-type TabType = 'live' | 'fixtures' | 'effects' | 'patch' | 'console' | 'stage' | 'editor' | 'settings';
+type TabType = 'live' | 'fixtures' | 'patch' | 'console' | 'stage' | 'editor' | 'settings';
+
+interface CalibrationSettings {
+  invertPan: boolean;
+  invertTilt: boolean;
+  offsetPan: number;
+  offsetTilt: number;
+}
 
 function App() {
-  const APP_VERSION = "1.2.0";
+  const APP_VERSION = "1.3.0";
   const [channels, setChannels] = useState<number[]>(Array(512).fill(0));
   const [isConnected, setIsConnected] = useState(false);
   const [pan, setPan] = useState(127);
@@ -43,6 +50,91 @@ function App() {
   const [selectedPort, setSelectedPort] = useState('COM3');
   const [selectedFixtures, setSelectedFixtures] = useState<number[]>([]);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+
+  // --- États du Moteur DMX (Migrés de LiveTab pour tourner en arrière-plan) ---
+  const [groupMovements, setGroupMovements] = useState<Record<string, { 
+    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep', 
+    speed: number, 
+    sizePan: number,
+    sizeTilt: number,
+    fan: number,
+    invert180: boolean
+  }>>(() => {
+    const saved = localStorage.getItem('dmx_group_movements');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [groupPan, setGroupPan] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('dmx_group_pan');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [groupTilt, setGroupTilt] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('dmx_group_tilt');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [groupAutoColorActive, setGroupAutoColorActive] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('dmx_group_auto_color');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [groupAutoGoboActive, setGroupAutoGoboActive] = useState<Record<string, boolean>>(() => {
+     const saved = localStorage.getItem('dmx_group_auto_gobo');
+     return saved ? JSON.parse(saved) : {};
+   });
+ 
+   const [groupIntensities, setGroupIntensities] = useState<Record<string, {dim: number, str: number}>>(() => {
+     const saved = localStorage.getItem('dmx_group_intensities');
+     return saved ? JSON.parse(saved) : {};
+   });
+
+   const [groupColors, setGroupColors] = useState<Record<string, {r: number, g: number, b: number, v?: number}>>(() => {
+     const saved = localStorage.getItem('dmx_group_colors');
+     return saved ? JSON.parse(saved) : {};
+   });
+
+   const [groupGobos, setGroupGobos] = useState<Record<string, number>>(() => {
+     const saved = localStorage.getItem('dmx_group_gobos');
+     return saved ? JSON.parse(saved) : {};
+   });
+ 
+   const [groupPositions, setGroupPositions] = useState<Record<string, { 
+     x: number, 
+     y: number, 
+     label: string 
+   }[]>>(() => {
+     const saved = localStorage.getItem('dmx_group_positions');
+     return saved ? JSON.parse(saved) : {};
+   });
+ 
+   const [groupMovementPresets, setGroupMovementPresets] = useState<Record<string, { 
+     shape: string,
+     speed: number,
+     sizePan: number,
+     sizeTilt: number,
+     fan: number,
+     invert180: boolean,
+     label: string 
+   }[]>>(() => {
+     const saved = localStorage.getItem('dmx_group_movement_presets');
+     return saved ? JSON.parse(saved) : {};
+   });
+ 
+   const [fixtureCalibration, setFixtureCalibration] = useState<Record<number, CalibrationSettings>>(() => {
+    const saved = localStorage.getItem('dmx_fixture_calibration');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [groupPulseActive, setGroupPulseActive] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('dmx_group_pulse');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [bpm, setBpm] = useState(120);
+
+  const [liveGroupPositions, setLiveGroupPositions] = useState<Record<string, { pan: number, tilt: number }>>({});
+  // --------------------------------------------------------------------------
   
   // Initialisation des fixtures depuis localStorage ou données par défaut
   const [fixtures, setFixtures] = useState(() => {
@@ -64,6 +156,22 @@ function App() {
   useEffect(() => {
     localStorage.setItem('dmx_groups', JSON.stringify(groups));
   }, [groups]);
+
+  // Sauvegarde des états du moteur DMX
+  useEffect(() => {
+    localStorage.setItem('dmx_group_movements', JSON.stringify(groupMovements));
+    localStorage.setItem('dmx_group_pan', JSON.stringify(groupPan));
+    localStorage.setItem('dmx_group_tilt', JSON.stringify(groupTilt));
+    localStorage.setItem('dmx_group_auto_color', JSON.stringify(groupAutoColorActive));
+    localStorage.setItem('dmx_group_auto_gobo', JSON.stringify(groupAutoGoboActive));
+    localStorage.setItem('dmx_group_pulse', JSON.stringify(groupPulseActive));
+    localStorage.setItem('dmx_group_intensities', JSON.stringify(groupIntensities));
+    localStorage.setItem('dmx_group_colors', JSON.stringify(groupColors));
+    localStorage.setItem('dmx_group_gobos', JSON.stringify(groupGobos));
+    localStorage.setItem('dmx_group_positions', JSON.stringify(groupPositions));
+    localStorage.setItem('dmx_group_movement_presets', JSON.stringify(groupMovementPresets));
+    localStorage.setItem('dmx_fixture_calibration', JSON.stringify(fixtureCalibration));
+  }, [groupMovements, groupPan, groupTilt, groupAutoColorActive, groupAutoGoboActive, groupPulseActive, groupIntensities, groupColors, groupGobos, groupPositions, groupMovementPresets, fixtureCalibration]);
 
   const getFixtureById = (id: number | null) => fixtures.find((f: any) => f.id === id);
 
@@ -89,7 +197,20 @@ function App() {
   }, []);
 
   const updateDmx = async (ch: number, val: string | number) => {
-    const numVal = typeof val === 'string' ? parseInt(val) : val;
+    // On arrondit systématiquement à l'entier le plus proche (le DMX ne gère que 0-255)
+    const rawVal = typeof val === 'string' ? parseFloat(val) : val;
+    const numVal = Math.round(rawVal);
+    
+    // Mettre à jour l'état local immédiatement pour la vue DMX
+    setChannels(prev => {
+      const newChannels = [...prev];
+      if (newChannels[ch] !== numVal) {
+        newChannels[ch] = numVal;
+        return newChannels;
+      }
+      return prev;
+    });
+
     try {
       await invoke('update_dmx', { channel: ch + 1, value: numVal });
     } catch (e) {
@@ -251,6 +372,202 @@ function App() {
     }
   };
 
+  // --- LOGIQUE DU MOTEUR DMX EN ARRIÈRE-PLAN ---
+
+  // Logique du générateur de mouvements (Shapes)
+  useEffect(() => {
+    const activeGroups = Object.keys(groupMovements).filter((id: string) => 
+      groupMovements[id]?.shape !== 'none' && groups.some(g => g.id === id)
+    );
+    
+    if (activeGroups.length === 0) {
+      if (Object.keys(liveGroupPositions).length > 0) setLiveGroupPositions({});
+      return;
+    }
+
+    let startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const newLivePositions: Record<string, { pan: number, tilt: number }> = {};
+
+      activeGroups.forEach((groupId: string) => {
+        const group = groups.find(g => g.id === groupId);
+        const config = groupMovements[groupId];
+        if (!group || !config) return;
+
+        const speed = config.speed / 50;
+        const sizePan = (config.sizePan ?? 64) / 2;
+        const sizeTilt = (config.sizeTilt ?? 64) / 2;
+        const fan = config.fan;
+
+        // Calcul de la position "live" pour le groupe
+        const basePhase = elapsed * speed;
+        let basePanOffset = 0;
+        let baseTiltOffset = 0;
+
+        switch (config.shape) {
+          case 'circle':
+            basePanOffset = Math.cos(basePhase) * sizePan;
+            baseTiltOffset = Math.sin(basePhase) * sizeTilt;
+            break;
+          case 'eight':
+            basePanOffset = Math.cos(basePhase) * sizePan;
+            baseTiltOffset = Math.sin(basePhase * 2) * (sizeTilt / 2);
+            break;
+          case 'pan_sweep':
+            basePanOffset = Math.cos(basePhase) * sizePan;
+            break;
+          case 'tilt_sweep':
+            baseTiltOffset = Math.sin(basePhase) * sizeTilt;
+            break;
+        }
+
+        newLivePositions[groupId] = {
+          pan: Math.min(255, Math.max(0, (groupPan[groupId] ?? 127) + basePanOffset)),
+          tilt: Math.min(255, Math.max(0, (groupTilt[groupId] ?? 127) + baseTiltOffset))
+        };
+
+        group.fixtureIds.forEach((id: number, index: number) => {
+          const fixture = fixtures.find(f => f.id === id);
+          if (fixture && fixture.type === 'Moving Head') {
+            const phase = elapsed * speed + (index * (fan / 255) * Math.PI * 2);
+            let panOffset = 0;
+            let tiltOffset = 0;
+
+            switch (config.shape) {
+              case 'circle':
+                panOffset = Math.cos(phase) * sizePan;
+                tiltOffset = Math.sin(phase) * sizeTilt;
+                break;
+              case 'eight':
+                panOffset = Math.cos(phase) * sizePan;
+                tiltOffset = Math.sin(phase * 2) * (sizeTilt / 2);
+                break;
+              case 'pan_sweep':
+                panOffset = Math.cos(phase) * sizePan;
+                break;
+              case 'tilt_sweep':
+                tiltOffset = Math.sin(phase) * sizeTilt;
+                break;
+            }
+
+            if (config.invert180 && index % 2 !== 0) {
+              panOffset = -panOffset;
+              tiltOffset = -tiltOffset;
+            }
+
+            const finalPan = Math.min(255, Math.max(0, (groupPan[groupId] ?? 127) + panOffset));
+            const finalTilt = Math.min(255, Math.max(0, (groupTilt[groupId] ?? 127) + tiltOffset));
+
+            const cal = fixtureCalibration[id] || { invertPan: false, invertTilt: false, offsetPan: 0, offsetTilt: 0 };
+            let calPan = Math.min(255, Math.max(0, finalPan + cal.offsetPan));
+            let calTilt = Math.min(255, Math.max(0, finalTilt + cal.offsetTilt));
+            
+            if (cal.invertPan) calPan = 255 - calPan;
+            if (cal.invertTilt) calTilt = 255 - calTilt;
+
+            updateDmx(fixture.address - 1, calPan);
+            updateDmx(fixture.address + 1, calTilt);
+          }
+        });
+      });
+
+      setLiveGroupPositions(newLivePositions);
+    }, 40);
+
+    return () => clearInterval(interval);
+  }, [groupMovements, groupPan, groupTilt, groups, fixtures, fixtureCalibration]);
+
+  // Logique Auto-Color
+  useEffect(() => {
+    const activeGroups = Object.keys(groupAutoColorActive).filter(id => 
+      groupAutoColorActive[id] === true && groups.some(g => g.id === id)
+    );
+    
+    if (activeGroups.length === 0) return;
+
+    const wheelColors = [
+      { r: 255, g: 255, b: 255, v: 5 },  { r: 255, g: 0,   b: 0,   v: 16 },
+      { r: 255, g: 128, b: 0,   v: 27 }, { r: 255, g: 255, b: 0,   v: 38 },
+      { r: 0,   g: 255, b: 0,   v: 49 }, { r: 0,   g: 0,   b: 255, v: 60 },
+      { r: 0,   g: 255, b: 255, v: 71 }, { r: 255, g: 0,   b: 255, v: 82 }
+    ];
+
+    const interval = setInterval(() => {
+      activeGroups.forEach(groupId => {
+        const group = groups.find(g => g.id === groupId);
+        if (group) {
+          const hasMovingHead = fixtures.some(f => group.fixtureIds.includes(f.id) && f.type === 'Moving Head');
+          if (hasMovingHead) {
+            const colorIndex = Math.floor((Date.now() / 1000) % wheelColors.length);
+            const color = wheelColors[colorIndex];
+            
+            group.fixtureIds.forEach(id => {
+              const f = fixtures.find(fx => fx.id === id);
+              if (f && f.type === 'Moving Head') {
+                updateDmx(f.address + 7, color.v);   // PicoSpot CH8 : Color Wheel
+              }
+            });
+          } else {
+            const currentHue = (Date.now() / 20) % 360;
+            const { r, g, b } = hslToRgb(currentHue, 100, 50);
+            
+            group.fixtureIds.forEach(id => {
+              const f = fixtures.find(fx => fx.id === id);
+              if (f && f.type === 'RGB') {
+                updateDmx(f.address, r);             // Canal 2 : Rouge
+                updateDmx(f.address + 1, g);         // Canal 3 : Vert
+                updateDmx(f.address + 2, b);         // Canal 4 : Bleu
+              }
+            });
+          }
+        }
+      });
+    }, 50); // Fréquence augmentée à 20Hz (50ms) pour des transitions fluides
+
+    return () => clearInterval(interval);
+  }, [groupAutoColorActive, groups, fixtures]);
+
+  // Logique du mode Pulse (synchronisé sur le BPM)
+  useEffect(() => {
+    const activeGroups = Object.keys(groupPulseActive).filter(id => 
+      groupPulseActive[id] === true && groups.some(g => g.id === id)
+    );
+    
+    if (activeGroups.length === 0) return;
+
+    const interval = setInterval(() => {
+      const beatDuration = (60 / bpm) * 1000;
+      const elapsed = Date.now();
+      const progress = (elapsed % beatDuration) / beatDuration;
+      
+      // Courbe de décroissance exponentielle pour un effet "impact"
+      const decay = Math.pow(1 - progress, 2);
+      const currentIntensity = Math.round(255 * decay);
+      
+      activeGroups.forEach(groupId => {
+        const group = groups.find(g => g.id === groupId);
+        if (group) {
+          group.fixtureIds.forEach(id => {
+            const fixture = fixtures.find(f => f.id === id);
+            if (fixture) {
+              const start = fixture.address - 1;
+              if (fixture.type === 'RGB') {
+                updateDmx(start, currentIntensity);
+              } else if (fixture.type === 'Moving Head') {
+                updateDmx(start + 5, currentIntensity);
+              } else if (fixture.type === 'Effect') {
+                updateDmx(start, currentIntensity);
+              }
+            }
+          });
+        }
+      });
+    }, 30); // 33fps pour une fluidité correcte
+
+    return () => clearInterval(interval);
+  }, [groupPulseActive, bpm, groups, fixtures]);
+
   const handlePortChange = async (newPort: string) => {
     setSelectedPort(newPort);
     console.log("Changement de port vers:", newPort);
@@ -283,7 +600,6 @@ function App() {
           {[
             { id: 'live', label: 'Live', icon: Zap },
             { id: 'fixtures', label: 'Projecteurs', icon: Layout },
-            { id: 'effects', label: 'Effets', icon: Activity },
             { id: 'stage', label: 'Plateau', icon: Maximize2 },
             { id: 'editor', label: 'Librairie', icon: Box },
             { id: 'console', label: 'Vue DMX', icon: Sliders },
@@ -336,6 +652,37 @@ function App() {
             handleMasterDimmer={handleMasterDimmer}
             handleMasterStrobe={handleMasterStrobe}
             onRenameGroup={handleRenameGroup}
+            
+            // États migrés vers App pour persistance en arrière-plan
+            groupMovements={groupMovements}
+            setGroupMovements={setGroupMovements}
+            groupPan={groupPan}
+            setGroupPan={setGroupPan}
+            groupTilt={groupTilt}
+            setGroupTilt={setGroupTilt}
+            groupAutoColorActive={groupAutoColorActive}
+            setGroupAutoColorActive={setGroupAutoColorActive}
+            groupAutoGoboActive={groupAutoGoboActive}
+            setGroupAutoGoboActive={setGroupAutoGoboActive}
+            groupGobos={groupGobos}
+            setGroupGobos={setGroupGobos}
+            groupPositions={groupPositions}
+            setGroupPositions={setGroupPositions}
+            groupMovementPresets={groupMovementPresets}
+            setGroupMovementPresets={setGroupMovementPresets}
+            fixtureCalibration={fixtureCalibration}
+            setFixtureCalibration={setFixtureCalibration}
+            liveGroupPositions={liveGroupPositions}
+            
+            // Intensités pour le moteur Auto-Color
+            groupIntensities={groupIntensities}
+            setGroupIntensities={setGroupIntensities}
+            groupColors={groupColors}
+            setGroupColors={setGroupColors}
+            groupPulseActive={groupPulseActive}
+            setGroupPulseActive={setGroupPulseActive}
+            bpm={bpm}
+            setBpm={setBpm}
           />
         )}
 
@@ -382,10 +729,6 @@ function App() {
             fixtures={fixtures}
             channels={channels}
           />
-        )}
-
-        {activeTab === 'effects' && (
-          <EffectsTab fixtures={fixtures} />
         )}
 
         {activeTab === 'editor' && (

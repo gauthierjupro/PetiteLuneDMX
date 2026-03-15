@@ -15,13 +15,18 @@ import { MasterGlobalSection } from './live/MasterGlobalSection';
 import { StrobeModal } from './live/StrobeModal';
 import { ColorPickerModal } from './live/ColorPickerModal';
 import { SavePresetModal } from './live/SavePresetModal';
+import { CalibrationModal } from './live/CalibrationModal';
+import { EffectsModal } from './live/EffectsModal';
 
 interface GroupState {
   dim: number;
   str: number;
-  color: { r: number, g: number, b: number };
-  auto: boolean;
-  pulse: boolean;
+  color: { r: number, g: number, b: number, v?: number };
+  pan?: number;
+  tilt?: number;
+  gobo?: number;
+  auto?: boolean;
+  pulse?: boolean;
 }
 
 interface AmbiancePreset {
@@ -34,6 +39,13 @@ interface Preset {
   name: string;
   data: number[];
   timestamp: string;
+}
+
+interface CalibrationSettings {
+  invertPan: boolean;
+  invertTilt: boolean;
+  offsetPan: number;
+  offsetTilt: number;
 }
 
 interface LiveTabProps {
@@ -54,6 +66,49 @@ interface LiveTabProps {
   handleMasterDimmer: (val: number) => void;
   handleMasterStrobe: (val: number) => void;
   onRenameGroup: (groupId: string, newName: string) => void;
+
+  groupIntensities: Record<string, {dim: number, str: number}>;
+  setGroupIntensities: React.Dispatch<React.SetStateAction<any>>;
+  groupColors: Record<string, {r: number, g: number, b: number, v?: number}>;
+  setGroupColors: React.Dispatch<React.SetStateAction<any>>;
+  groupPulseActive: Record<string, boolean>;
+  setGroupPulseActive: React.Dispatch<React.SetStateAction<any>>;
+  bpm: number;
+  setBpm: React.Dispatch<React.SetStateAction<any>>;
+  groupMovements: Record<string, { 
+    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep', 
+    speed: number, 
+    sizePan: number,
+    sizeTilt: number,
+    fan: number,
+    invert180: boolean
+  }>;
+  setGroupMovements: React.Dispatch<React.SetStateAction<any>>;
+  groupPan: Record<string, number>;
+  setGroupPan: React.Dispatch<React.SetStateAction<any>>;
+  groupTilt: Record<string, number>;
+  setGroupTilt: React.Dispatch<React.SetStateAction<any>>;
+  groupAutoColorActive: Record<string, boolean>;
+  setGroupAutoColorActive: React.Dispatch<React.SetStateAction<any>>;
+  groupAutoGoboActive: Record<string, boolean>;
+  setGroupAutoGoboActive: React.Dispatch<React.SetStateAction<any>>;
+  groupGobos: Record<string, number>;
+  setGroupGobos: React.Dispatch<React.SetStateAction<any>>;
+  groupPositions: Record<string, { x: number, y: number, label: string }[]>;
+  setGroupPositions: React.Dispatch<React.SetStateAction<any>>;
+  groupMovementPresets: Record<string, { 
+    shape: string,
+    speed: number,
+    sizePan: number,
+    sizeTilt: number,
+    fan: number,
+    invert180: boolean,
+    label: string 
+  }[]>;
+  setGroupMovementPresets: React.Dispatch<React.SetStateAction<any>>;
+  fixtureCalibration: Record<number, CalibrationSettings>;
+  setFixtureCalibration: React.Dispatch<React.SetStateAction<any>>;
+  liveGroupPositions: Record<string, { pan: number, tilt: number }>;
 }
 
 export const LiveTab = ({ 
@@ -65,11 +120,26 @@ export const LiveTab = ({
   handleMultiFixtureAction,
   handleGroupAction,
   handleMasterDimmer, handleMasterStrobe,
-  onRenameGroup
+  onRenameGroup,
+
+  // Props migrées
+  groupIntensities, setGroupIntensities,
+  groupColors, setGroupColors,
+  groupPulseActive, setGroupPulseActive,
+  bpm, setBpm,
+  groupMovements, setGroupMovements,
+  groupPan, setGroupPan,
+  groupTilt, setGroupTilt,
+  groupAutoColorActive, setGroupAutoColorActive,
+  groupAutoGoboActive, setGroupAutoGoboActive,
+  groupGobos, setGroupGobos,
+  groupPositions, setGroupPositions,
+  groupMovementPresets, setGroupMovementPresets,
+  fixtureCalibration, setFixtureCalibration,
+  liveGroupPositions
 }: LiveTabProps) => {
   const [presets, setPresets] = React.useState<Preset[]>([]);
 
-  const [bpm, setBpm] = React.useState(120);
   const [tapTimes, setTapTimes] = React.useState<number[]>([]);
   const [isBeatActive, setIsBeatActive] = React.useState(false);
   const [isAudioActive, setIsAudioActive] = React.useState(false);
@@ -85,14 +155,6 @@ export const LiveTab = ({
     const saved = localStorage.getItem('dmx_linked_groups');
     return saved ? JSON.parse(saved) : [];
   });
-  const [groupColors, setGroupColors] = React.useState<Record<string, {r: number, g: number, b: number}>>(() => {
-    const saved = localStorage.getItem('dmx_group_colors');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [groupIntensities, setGroupIntensities] = React.useState<Record<string, {dim: number, str: number}>>(() => {
-    const saved = localStorage.getItem('dmx_group_intensities');
-    return saved ? JSON.parse(saved) : {};
-  });
   const [masterVal, setMasterVal] = React.useState(255);
   const [globalStrobe, setGlobalStrobe] = React.useState(0);
   const [isAutoColorActive, setIsAutoColorActive] = React.useState(false);
@@ -103,13 +165,12 @@ export const LiveTab = ({
   const [isAmbiancePulseActive, setIsAmbiancePulseActive] = React.useState(() => {
     return localStorage.getItem('dmx_ambiance_pulse') === 'true';
   });
-  const [groupAutoColorActive, setGroupAutoColorActive] = React.useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('dmx_group_auto_color');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [groupPulseActive, setGroupPulseActive] = React.useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('dmx_group_pulse');
-    return saved ? JSON.parse(saved) : {};
+  const [isCalibrationOpen, setIsCalibrationOpen] = React.useState(false);
+  const [effectsModalState, setEffectsModalState] = React.useState<{isOpen: boolean, groupId: string, groupName: string, fixtureIds: number[]}>({
+    isOpen: false,
+    groupId: '',
+    groupName: '',
+    fixtureIds: []
   });
   const [groupStrobeValues, setGroupStrobeValues] = React.useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('dmx_group_strobe_values');
@@ -129,17 +190,13 @@ export const LiveTab = ({
   // Sauvegarde des états dans localStorage
   React.useEffect(() => {
     localStorage.setItem('dmx_linked_groups', JSON.stringify(linkedGroups));
-    localStorage.setItem('dmx_group_colors', JSON.stringify(groupColors));
-    localStorage.setItem('dmx_group_intensities', JSON.stringify(groupIntensities));
-    localStorage.setItem('dmx_group_auto_color', JSON.stringify(groupAutoColorActive));
-    localStorage.setItem('dmx_group_pulse', JSON.stringify(groupPulseActive));
     localStorage.setItem('dmx_ambiance_auto_color', isAmbianceAutoColorActive.toString());
     localStorage.setItem('dmx_ambiance_pulse', isAmbiancePulseActive.toString());
     localStorage.setItem('dmx_group_strobe_values', JSON.stringify(groupStrobeValues));
     if (selectedAudioDeviceId) {
       localStorage.setItem('dmx_audio_device_id', selectedAudioDeviceId);
     }
-  }, [linkedGroups, groupColors, groupIntensities, groupAutoColorActive, groupPulseActive, isAmbianceAutoColorActive, isAmbiancePulseActive, groupStrobeValues, selectedAudioDeviceId]);
+  }, [linkedGroups, isAmbianceAutoColorActive, isAmbiancePulseActive, groupStrobeValues, selectedAudioDeviceId]);
 
   const [customPresets, setCustomPresets] = React.useState<Record<string, AmbiancePreset>>(() => {
     const saved = localStorage.getItem('dmx_custom_ambiance_presets');
@@ -207,8 +264,8 @@ export const LiveTab = ({
       if (group) {
         newIntensities[groupId] = { dim: state.dim, str: state.str };
         newColors[groupId] = state.color;
-        newAuto[groupId] = state.auto;
-        newPulse[groupId] = state.pulse;
+        newAuto[groupId] = state.auto ?? false;
+        newPulse[groupId] = state.pulse ?? false;
 
         // Envoyer les commandes DMX réelles
         handleMultiFixtureAction(group.fixtureIds, 'dimmer', state.dim);
@@ -222,6 +279,20 @@ export const LiveTab = ({
     setGroupAutoColorActive(newAuto);
     setGroupPulseActive(newPulse);
   };
+
+  const handleSaveAmbiance = (presetId: string, name: string) => {
+    const newState = captureAmbianceState(name);
+    setCustomPresets((prev: Record<string, AmbiancePreset>) => ({ ...prev, [presetId]: newState }));
+    setIsSavePresetModalOpen(false);
+  };
+
+  const handleRenamePreset = (presetId: string, newName: string) => {
+    setCustomPresets((prev: Record<string, AmbiancePreset>) => ({
+      ...prev,
+      [presetId]: { ...prev[presetId], name: newName }
+    }));
+  };
+
   const [activePresetToEdit, setActivePresetToEdit] = React.useState<string | null>(null);
   const [activeUserColorToEdit, setActiveUserColorToEdit] = React.useState<string | null>(null);
   const [tempColor, setTempColor] = React.useState({ r: 255, g: 255, b: 255 });
@@ -290,7 +361,7 @@ export const LiveTab = ({
   
   // Initialiser les intensités et couleurs des groupes si non persistés
   React.useEffect(() => {
-    setGroupIntensities(prev => {
+    setGroupIntensities((prev: Record<string, {dim: number, str: number}>) => {
       const newIntensities = { ...prev };
       groups.forEach(g => {
         if (!newIntensities[g.id]) {
@@ -299,7 +370,7 @@ export const LiveTab = ({
       });
       return newIntensities;
     });
-    setGroupColors(prev => {
+    setGroupColors((prev: Record<string, {r: number, g: number, b: number, v?: number}>) => {
       const newColors = { ...prev };
       groups.forEach(g => {
         if (!newColors[g.id]) {
@@ -348,17 +419,17 @@ export const LiveTab = ({
 
   // Basculer le lien d'un groupe
   const toggleGroupLink = (groupId: string) => {
-    setLinkedGroups(prev => {
+    setLinkedGroups((prev: string[]) => {
       const isLinking = !prev.includes(groupId);
       const next = isLinking ? [...prev, groupId] : prev.filter(id => id !== groupId);
       
       // Synchronisation de l'état Auto/Pulse lors de la liaison
       if (isLinking) {
         if (isAmbianceAutoColorActive) {
-          setGroupAutoColorActive(curr => ({ ...curr, [groupId]: true }));
+          setGroupAutoColorActive((curr: Record<string, boolean>) => ({ ...curr, [groupId]: true }));
         }
         if (isAmbiancePulseActive) {
-          setGroupPulseActive(curr => ({ ...curr, [groupId]: true }));
+          setGroupPulseActive((curr: Record<string, boolean>) => ({ ...curr, [groupId]: true }));
         }
       } else {
         // LORS DU DÉLIEMENT : La carte devient autonome et GARDE son état (Pulse, Auto-Color et Valeurs)
@@ -531,64 +602,21 @@ export const LiveTab = ({
   // les états Pulse individuels des groupes liés.
   // Cela garantit une synchronisation parfaite et évite les conflits DMX.
 
-  // Logique du cycle de couleur Auto pour chaque groupe individuel
-  React.useEffect(() => {
-    const activeGroups = Object.keys(groupAutoColorActive).filter(id => 
-      groupAutoColorActive[id] === true && groups.some(g => g.id === id)
-    );
-    
-    if (activeGroups.length === 0) return;
+  // Logique du cycle automatique des gobos
+  // Migré vers App.tsx pour fonctionnement en arrière-plan
 
-    const interval = setInterval(() => {
-      activeGroups.forEach(groupId => {
-        const group = groups.find(g => g.id === groupId);
-        // On gère la couleur de chaque groupe actif
-        if (group) {
-          const currentHue = (Date.now() / 20) % 360;
-          const { r, g, b } = hslToRgb(currentHue, 100, 50);
-          sendColor(group.fixtureIds, r, g, b, groupId, true);
-        }
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [groupAutoColorActive, groups, linkedGroups, isAmbianceAutoColorActive]);
+  // Logique du générateur de mouvements (Shapes)
+  // Migré vers App.tsx pour fonctionnement en arrière-plan
 
   // Logique du mode Pulse pour chaque groupe individuel
-  React.useEffect(() => {
-    // On ne filtre que les groupes qui sont actifs ET qui existent encore dans les données
-    const activeGroups = Object.keys(groupPulseActive).filter(id => 
-      groupPulseActive[id] === true && groups.some(g => g.id === id)
-    );
-    
-    if (activeGroups.length === 0) return;
-
-    const beatDuration = (60 / bpm) * 1000;
-
-    const interval = setInterval(() => {
-      const elapsed = Date.now();
-      const progress = (elapsed % beatDuration) / beatDuration;
-      const decay = Math.pow(1 - progress, 2);
-      const currentIntensity = Math.round(255 * decay);
-      
-      activeGroups.forEach(groupId => {
-        const group = groups.find(g => g.id === groupId);
-        // On gère le pulse de chaque groupe actif
-        if (group) {
-          sendIntensity(group.fixtureIds, 'dim', currentIntensity, groupId, true);
-        }
-      });
-    }, 30);
-
-    return () => clearInterval(interval);
-  }, [groupPulseActive, bpm, groups, linkedGroups, isAmbiancePulseActive]);
+  // Migré vers App.tsx pour fonctionnement en arrière-plan
 
   // Helper pour les intensités (Dimmer/Strobe)
   const sendIntensity = (fixtureIds: number[], type: 'dim' | 'str', val: number, groupId?: string, isAuto = false) => {
     // Si c'est une action manuelle sur le dimmer, on coupe le mode Pulse correspondant
     if (type === 'dim' && !isAuto) {
       if (groupId) {
-        setGroupPulseActive(prev => ({ ...prev, [groupId]: false }));
+        setGroupPulseActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: false }));
       } else {
         // L'action Master Ambiance coupe le Pulse sur TOUS les groupes liés
         const newPulse = { ...groupPulseActive };
@@ -622,7 +650,7 @@ export const LiveTab = ({
         setGroupIntensities(newIntensities);
       } else {
         // Action individuelle : On ne met à jour QUE ce groupe
-        setGroupIntensities(prev => ({
+        setGroupIntensities((prev: Record<string, {dim: number, str: number}>) => ({
           ...prev,
           [groupId]: { ...prev[groupId], [type]: val }
         }));
@@ -639,11 +667,11 @@ export const LiveTab = ({
   }, [linkedGroups]);
 
   // Helper pour les couleurs RGB
-  const sendColor = (fixtureIds: number[], r: number, g: number, b: number, groupId?: string, isAuto = false) => {
+  const sendColor = (fixtureIds: number[], r: number, g: number, b: number, groupId?: string, isAuto = false, wheelValue?: number) => {
     // Désactiver le mode Auto Color seulement si c'est une action manuelle
     if (!isAuto) {
       if (groupId) {
-        setGroupAutoColorActive(prev => ({ ...prev, [groupId]: false }));
+        setGroupAutoColorActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: false }));
       } else {
         // L'action Master Ambiance coupe l'Auto-Color sur TOUS les groupes liés
         const newAuto = { ...groupAutoColorActive };
@@ -658,20 +686,66 @@ export const LiveTab = ({
     // Si pas de groupId, c'est l'action Master -> On agit sur TOUT le lien
     const targetIds = !groupId ? getLinkedFixtureIds() : fixtureIds;
 
-    console.log(`Color: RGB(${r}, ${g}, ${b}) for ${targetIds.length} fixtures (Action from: ${groupId || 'MASTER'})`);
-    handleMultiFixtureAction(targetIds, 'color', { r, g, b });
+    console.log(`Color: RGB(${r}, ${g}, ${b}) Wheel:${wheelValue} for ${targetIds.length} fixtures (Action from: ${groupId || 'MASTER'})`);
+    
+    // Si une valeur de roue est fournie (pour les Moving Head), on l'utilise
+    targetIds.forEach(id => {
+      const fixture = fixtures.find(f => f.id === id);
+      if (fixture) {
+        if (fixture.type === 'Moving Head' && wheelValue !== undefined) {
+          // Canal 8 pour PicoSpot (address + 7)
+          updateDmx(fixture.address + 7, wheelValue);
+        } else if (fixture.type === 'RGB') {
+          const start = fixture.address - 1;
+          updateDmx(start + 1, r);
+          updateDmx(start + 2, g);
+          updateDmx(start + 3, b);
+        }
+      }
+    });
 
     if (!groupId) {
       // Action Master : On met à jour tous les groupes liés
       const newColors = { ...groupColors };
       linkedGroups.forEach(id => {
-        newColors[id] = { r, g, b };
+        newColors[id] = { r, g, b, v: wheelValue };
       });
       setGroupColors(newColors);
     } else {
       // Action individuelle : On ne met à jour QUE ce groupe
-      setGroupColors(prev => ({ ...prev, [groupId]: { r, g, b } }));
+      setGroupColors((prev: Record<string, {r: number, g: number, b: number, v?: number}>) => ({ ...prev, [groupId]: { r, g, b, v: wheelValue } }));
     }
+  };
+
+  // Helper pour les mouvements (Pan/Tilt)
+  const sendMovement = (fixtureIds: number[], pan: number, tilt: number, groupId: string) => {
+    console.log(`Movement: Pan ${pan}, Tilt ${tilt} for group ${groupId}`);
+    
+    fixtureIds.forEach(id => {
+      const fixture = fixtures.find(f => f.id === id);
+      if (fixture && fixture.type === 'Moving Head') {
+        const cal = fixtureCalibration[id] || { invertPan: false, invertTilt: false, offsetPan: 0, offsetTilt: 0 };
+        
+        // Appliquer l'offset et l'inversion
+        let finalPan = pan + (cal.offsetPan || 0);
+        let finalTilt = tilt + (cal.offsetTilt || 0);
+        
+        // Clamp 0-255
+        finalPan = Math.min(255, Math.max(0, finalPan));
+        finalTilt = Math.min(255, Math.max(0, finalTilt));
+        
+        // Appliquer l'inversion
+        if (cal.invertPan) finalPan = 255 - finalPan;
+        if (cal.invertTilt) finalTilt = 255 - finalTilt;
+        
+        // Canal Pan est address, Tilt est address + 2 (pour PicoSpot)
+        updateDmx(fixture.address - 1, finalPan);
+        updateDmx(fixture.address + 1, finalTilt);
+      }
+    });
+
+    setGroupPan((prev: Record<string, number>) => ({ ...prev, [groupId]: pan }));
+    setGroupTilt((prev: Record<string, number>) => ({ ...prev, [groupId]: tilt }));
   };
 
   // Helper pour les macros U1-U4
@@ -704,7 +778,7 @@ export const LiveTab = ({
           });
           setGroupAutoColorActive(newGroupAuto);
         } else {
-          setGroupAutoColorActive(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+          setGroupAutoColorActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: !prev[groupId] }));
         }
         break;
       case 'U2': // STROBE FAST (Flash de 1s)
@@ -718,7 +792,7 @@ export const LiveTab = ({
             });
             setGroupIntensities(newIntensities);
           } else {
-            setGroupIntensities(prev => ({ ...prev, [groupId]: { ...prev[groupId], str: 0 } }));
+            setGroupIntensities((prev: Record<string, {dim: number, str: number}>) => ({ ...prev, [groupId]: { ...prev[groupId], str: 0 } }));
           }
         }, 1000);
         break;
@@ -733,7 +807,7 @@ export const LiveTab = ({
           });
           setGroupPulseActive(newGroupPulse);
         } else {
-          setGroupPulseActive(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+          setGroupPulseActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: !prev[groupId] }));
         }
         break;
       case 'U4': // RANDOM COLOR
@@ -758,6 +832,33 @@ export const LiveTab = ({
             newColors[id] = firstHsl;
           });
           setGroupColors(newColors);
+        }
+        break;
+      case 'U6': // AUTO GOBO
+        if (groupId) {
+          const newState = !groupAutoGoboActive[groupId];
+          setGroupAutoGoboActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: newState }));
+          
+          // L'effet DMX sera géré par le useEffect de cycle automatique
+        }
+        break;
+      default:
+        if (macro.startsWith('G')) {
+          const goboIndex = parseInt(macro.substring(1));
+          if (!isNaN(goboIndex) && groupId) {
+            // Désactiver le mode Auto Gobo lors d'une sélection manuelle
+            setGroupAutoGoboActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: false }));
+            
+            setGroupGobos((prev: Record<string, number>) => ({ ...prev, [groupId]: goboIndex }));
+            // La valeur DMX pour les gobos est généralement un multiple de 32
+            const dmxValue = goboIndex * 32;
+            fixtureIds.forEach(id => {
+              const fixture = fixtures.find(f => f.id === id);
+              if (fixture && fixture.type === 'Moving Head') {
+                updateDmx(fixture.address + 6, dmxValue);
+              }
+            });
+          }
         }
         break;
     }
@@ -848,12 +949,10 @@ export const LiveTab = ({
           fixtures={fixtures}
         />
 
-        {/* SECTION MOUVEMENTS */}
+        {/* SECTION MOUVEMENTS (LYRES) */}
         <MovementSection 
           groups={groups}
           fixtures={fixtures}
-          pan={pan}
-          tilt={tilt}
           handlePanChange={handlePanChange}
           handleTiltChange={handleTiltChange}
           handleMultiFixtureAction={handleMultiFixtureAction}
@@ -862,21 +961,75 @@ export const LiveTab = ({
           currentMasterIntensity={currentMasterIntensity}
           groupPulseActive={groupPulseActive}
           groupAutoColorActive={groupAutoColorActive}
+          groupAutoGoboActive={groupAutoGoboActive}
+          groupGobos={groupGobos}
+          groupPan={groupPan}
+          groupTilt={groupTilt}
+          liveGroupPositions={liveGroupPositions}
           sendIntensity={sendIntensity}
           sendColor={sendColor}
+          sendMovement={sendMovement}
           handleMacro={handleMacro}
           onStrobeEdit={onStrobeEdit}
           groupStrobeValues={groupStrobeValues}
           channels={channels}
           updateDmx={updateDmx}
+          onOpenCalibration={() => setIsCalibrationOpen(true)}
+          onOpenEffects={(groupId, groupName, fixtureIds) => {
+            setEffectsModalState({
+              isOpen: true,
+              groupId,
+              groupName,
+              fixtureIds
+            });
+          }}
+        />
+
+        <CalibrationModal 
+          isOpen={isCalibrationOpen}
+          onClose={() => setIsCalibrationOpen(false)}
+          fixtures={fixtures}
+          calibration={fixtureCalibration}
+          onUpdateCalibration={(id, settings) => {
+            setFixtureCalibration(prev => ({
+              ...prev,
+              [id]: { ...(prev[id] || { invertPan: false, invertTilt: false, offsetPan: 0, offsetTilt: 0 }), ...settings }
+            }));
+          }}
+          onReset={(id) => {
+            setFixtureCalibration(prev => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          }}
+        />
+
+        <EffectsModal 
+          isOpen={effectsModalState.isOpen}
+          onClose={() => setEffectsModalState(prev => ({ ...prev, isOpen: false }))}
+          groupId={effectsModalState.groupId}
+          groupName={effectsModalState.groupName}
+          fixtureIds={effectsModalState.fixtureIds}
+          fixtures={fixtures}
+          groupMovements={groupMovements}
+          setGroupMovements={setGroupMovements}
+          groupPan={groupPan}
+          groupTilt={groupTilt}
+          sendMovement={sendMovement}
+          groupPositions={groupPositions}
+          setGroupPositions={setGroupPositions}
+          groupMovementPresets={groupMovementPresets}
+          setGroupMovementPresets={setGroupMovementPresets}
         />
 
         {/* SECTION RYTHME ET EFFETS */}
-        <RythmeSection 
+        {/* Masqué car remplacé par les modales d'effets par groupe */}
+        {false && <RythmeSection 
           fixtures={fixtures}
           channels={channels}
           updateDmx={updateDmx}
-        />
+        />}
       </div>
 
       {/* MODALES DE RÉGLAGES */}
