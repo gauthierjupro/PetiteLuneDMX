@@ -1,8 +1,0 @@
-pyserial
-customtkinter
-watchdog
-numpy
-
-# Optionnel : pour generer l'exe (build_exe.bat)
-# pyinstaller
-

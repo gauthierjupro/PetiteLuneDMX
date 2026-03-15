@@ -21,6 +21,8 @@ interface MovementSectionProps {
   groupPan: Record<string, number>;
   groupTilt: Record<string, number>;
   liveGroupPositions: Record<string, { pan: number, tilt: number }>;
+  liveGroupColors: Record<string, number>;
+  liveGroupGobos: Record<string, number>;
   sendIntensity: (ids: number[], type: 'dim' | 'str', val: number, groupId?: string) => void;
   sendColor: (ids: number[], r: number, g: number, b: number, groupId?: string, isAuto?: boolean, wheelValue?: number) => void;
   sendMovement: (ids: number[], pan: number, tilt: number, groupId: string) => void;
@@ -49,6 +51,8 @@ export const MovementSection = ({
   groupPan,
   groupTilt,
   liveGroupPositions,
+  liveGroupColors,
+  liveGroupGobos,
   sendIntensity,
   sendColor,
   sendMovement,
@@ -125,8 +129,9 @@ export const MovementSection = ({
                 <div className="flex items-center gap-4">
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">{group.name}</h3>
                   <div className="flex gap-2">
-                    {groupPulseActive[group.id] && <span className="px-1.5 py-0.5 bg-amber-500/20 text-[7px] font-black text-amber-500 rounded border border-amber-500/30">PULSE</span>}
-                    {groupAutoColorActive[group.id] && <span className="px-1.5 py-0.5 bg-cyan-500/20 text-[7px] font-black text-cyan-400 rounded border border-cyan-500/30">AUTO-RAINBOW</span>}
+                    {groupPulseActive[group.id] && <span className="px-1.5 py-0.5 bg-amber-500/20 text-[8px] font-black text-amber-500 rounded border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">PULSE</span>}
+                    {groupAutoColorActive[group.id] && <span className="px-1.5 py-0.5 bg-cyan-500/20 text-[8px] font-black text-cyan-400 rounded border border-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.2)]">AUTO-RAINBOW</span>}
+                    {groupAutoGoboActive[group.id] && <span className="px-1.5 py-0.5 bg-indigo-500/20 text-[8px] font-black text-indigo-400 rounded border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.2)]">AUTO-GOBO</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -145,18 +150,13 @@ export const MovementSection = ({
                        />
                     </div>
                   </div>
-                  {!isPicoSpot && (
-                    <Tooltip text="Intensité maximale immédiate pour ce groupe">
-                      <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 255, group.id)} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase shadow-[0_0_20px_rgba(37,99,235,0.5)] transition-all active:scale-95">FULL (100%)</button>
-                    </Tooltip>
-                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-7 flex gap-3">
                   <div className="space-y-3 w-fit shrink-0">
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-2">Lumière</p>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-blue-500 pl-2">Lumière</p>
                     <div className="flex gap-2 pt-1">
                       <div className="flex flex-col items-center gap-2">
                         <VerticalSlider 
@@ -167,11 +167,9 @@ export const MovementSection = ({
                           color="bg-blue-500" 
                         />
                         <div className="flex flex-col gap-1 w-full pt-1">
-                          {!isPicoSpot && (
-                            <Tooltip text="100%" className="w-full">
-                              <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 255, group.id)} className="w-full py-1.5 bg-blue-500 hover:bg-blue-400 text-[#05070a] rounded-lg text-[9px] font-black uppercase transition-all active:scale-90 shadow-lg">100%</button>
-                            </Tooltip>
-                          )}
+                          <Tooltip text="100%" className="w-full">
+                            <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 255, group.id)} className="w-full py-1.5 bg-blue-500 hover:bg-blue-400 text-[#05070a] rounded-lg text-[9px] font-black uppercase transition-all active:scale-90 shadow-lg">100%</button>
+                          </Tooltip>
                           <Tooltip text="0%" className="w-full">
                             <button onClick={() => sendIntensity(group.fixtureIds, 'dim', 0, group.id)} className="w-full py-1.5 bg-slate-800 hover:bg-rose-600 text-white rounded-lg text-[9px] font-black uppercase border border-white/5 transition-all active:scale-90">0%</button>
                           </Tooltip>
@@ -207,8 +205,8 @@ export const MovementSection = ({
                   </div>
 
                   <div className="space-y-3 w-fit shrink-0">
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-purple-500 pl-2">Couleurs</p>
-                    <div className="grid grid-cols-2 gap-1 pt-1">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-purple-500 pl-2">Couleurs</p>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
                       {[
                         { l: 'W',  r: 255, g: 255, b: 255, hex: '#ffffff', v: 5 },
                         { l: 'R',  r: 255, g: 0,   b: 0,   hex: '#ff0000', v: 16 },
@@ -223,10 +221,10 @@ export const MovementSection = ({
                           key={c.l} 
                           onClick={() => sendColor(group.fixtureIds, c.r, c.g, c.b, group.id, false, c.v)}
                           style={{ backgroundColor: c.hex }}
-                          className={`w-9 h-9 rounded-lg border transition-all shadow-xl active:scale-90 flex items-center justify-center ${
-                            (groupColors[group.id]?.v === c.v) 
-                            ? 'border-white border-[3px] scale-105' 
-                            : 'border-white/20 hover:scale-105'
+                          className={`w-10 h-10 rounded-lg border transition-all shadow-xl active:scale-90 flex items-center justify-center ${
+                            groupAutoColorActive[group.id]
+                            ? (liveGroupColors[group.id] === c.v ? 'border-white border-[3px] scale-105 shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'border-white/20 hover:scale-105')
+                            : (groupColors[group.id]?.v === c.v ? 'border-white border-[3px] scale-105 shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'border-white/20 hover:scale-105')
                           }`}
                           title={c.l}
                         />
@@ -235,13 +233,18 @@ export const MovementSection = ({
                   </div>
 
                   <div className="space-y-3 shrink-0">
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-amber-500 pl-2">Gobos</p>
-                    <div className="grid grid-cols-2 gap-1 pt-1">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-amber-500 pl-2">Gobos</p>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
                       {[0, 1, 2, 3, 4, 5, 6, 7].map(g => (
                         <button 
                           key={g} 
                           onClick={() => handleMacro(group.fixtureIds, `G${g}`, group.id)}
-                          className={`w-9 h-9 border rounded-lg text-[9px] font-black transition-all ${groupGobos[group.id] === g ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)]' : 'bg-slate-800/80 border-white/5 text-slate-500 hover:text-white'}`}>
+                          className={`w-10 h-10 border rounded-lg text-[9px] font-black transition-all ${
+                            groupAutoGoboActive[group.id]
+                            ? (liveGroupGobos[group.id] === g ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)] scale-105' : 'bg-slate-800/80 border-white/5 text-slate-500 hover:text-white')
+                            : (groupGobos[group.id] === g ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)] scale-105' : 'bg-slate-800/80 border-white/5 text-slate-500 hover:text-white')
+                          }`}
+                        >
                           {g || '∅'}
                         </button>
                       ))}
@@ -249,12 +252,12 @@ export const MovementSection = ({
                   </div>
 
                   <div className="space-y-3 shrink-0">
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-indigo-500 pl-2">Modes</p>
-                    <div className="flex flex-col gap-1.5 pt-1">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-indigo-500 pl-2">Modes</p>
+                    <div className="flex flex-col gap-2 pt-1">
                       <Tooltip text="Cycle automatique des couleurs" className="w-full">
                         <button 
                           onClick={() => handleMacro(group.fixtureIds, 'U1', group.id)}
-                          className={`w-20 h-9 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoColorActive[group.id] ? 'bg-cyan-500 text-[#05070a] border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400'}`}
+                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoColorActive[group.id] ? 'bg-cyan-500 text-[#05070a] border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400'}`}
                         >
                           <Activity className={`w-3 h-3 ${groupAutoColorActive[group.id] ? 'animate-pulse' : ''}`} /> Auto
                         </button>
@@ -262,7 +265,7 @@ export const MovementSection = ({
                       <Tooltip text="Effet de pulsation rythmique" className="w-full">
                         <button 
                           onClick={() => handleMacro(group.fixtureIds, 'U3', group.id)}
-                          className={`w-20 h-9 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupPulseActive[group.id] ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15_px_rgba(245,158,11,0.4)]' : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'}`}
+                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupPulseActive[group.id] ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15_px_rgba(245,158,11,0.4)]' : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'}`}
                         >
                           <HeartPulse className={`w-3 h-3 ${groupPulseActive[group.id] ? 'animate-bounce' : ''}`} /> Pulse
                         </button>
@@ -270,17 +273,9 @@ export const MovementSection = ({
                       <Tooltip text="Cycle automatique des gobos" className="w-full">
                         <button 
                           onClick={() => handleMacro(group.fixtureIds, 'U6', group.id)}
-                          className={`w-20 h-9 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoGoboActive[group.id] ? 'bg-indigo-500 text-[#05070a] border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]' : 'bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-400'}`}
+                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoGoboActive[group.id] ? 'bg-indigo-500 text-[#05070a] border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]' : 'bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-400'}`}
                         >
                           <RefreshCw className={`w-3 h-3 ${groupAutoGoboActive[group.id] ? 'animate-spin' : ''}`} /> Auto Gobo
-                        </button>
-                      </Tooltip>
-                      <Tooltip text="Ouvrir les effets avancés du groupe" className="w-full">
-                        <button 
-                          onClick={() => onOpenEffects(group.id, group.name, group.fixtureIds)}
-                          className="w-20 h-9 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg text-[9px] font-black text-purple-400 uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 group/eff"
-                        >
-                          <Sparkles className="w-3 h-3 group-hover/eff:animate-pulse" /> Effets
                         </button>
                       </Tooltip>
                     </div>
@@ -289,7 +284,17 @@ export const MovementSection = ({
 
                 <div className="col-span-5 flex gap-3 pt-0.5 border-l border-white/5 pl-3">
                   <div className="flex-1 space-y-3">
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-cyan-500 pl-2">Mouvement</p>
+                    <div className="flex items-center justify-between pr-1">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-l-2 border-cyan-500 pl-2">Mouvement</p>
+                      <Tooltip text="Ouvrir les effets de mouvement">
+                        <button 
+                          onClick={() => onOpenEffects(group.id, group.name, group.fixtureIds)}
+                          className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg text-[9px] font-black text-purple-400 uppercase transition-all flex items-center justify-center gap-1.5 active:scale-90 duration-75 group/eff"
+                        >
+                          <Sparkles className="w-2.5 h-2.5 group-hover/eff:animate-pulse" /> Effets
+                        </button>
+                      </Tooltip>
+                    </div>
                     <div className="flex gap-3 pt-1">
                       <div className="space-y-3 shrink-0 relative">
                         <XYPad 

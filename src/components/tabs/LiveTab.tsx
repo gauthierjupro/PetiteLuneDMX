@@ -109,6 +109,8 @@ interface LiveTabProps {
   fixtureCalibration: Record<number, CalibrationSettings>;
   setFixtureCalibration: React.Dispatch<React.SetStateAction<any>>;
   liveGroupPositions: Record<string, { pan: number, tilt: number }>;
+  liveGroupColors: Record<string, number>;
+  liveGroupGobos: Record<string, number>;
 }
 
 export const LiveTab = ({ 
@@ -136,7 +138,9 @@ export const LiveTab = ({
   groupPositions, setGroupPositions,
   groupMovementPresets, setGroupMovementPresets,
   fixtureCalibration, setFixtureCalibration,
-  liveGroupPositions
+  liveGroupPositions,
+  liveGroupColors,
+  liveGroupGobos
 }: LiveTabProps) => {
   const [presets, setPresets] = React.useState<Preset[]>([]);
 
@@ -391,6 +395,19 @@ export const LiveTab = ({
       setMasterVal(value);
       setCurrentMasterIntensity(value);
       handleMasterDimmer(value);
+      
+      // Reset de tous les modes PULSE (Ambiance et Groupes) lors d'un clic sur 0% ou 100%
+      if (value === 0 || value === 255) {
+        setIsAmbiancePulseActive(false);
+        setGroupPulseActive((prev: Record<string, boolean>) => {
+          const resetPulse: Record<string, boolean> = {};
+          Object.keys(prev).forEach(key => {
+            resetPulse[key] = false;
+          });
+          return resetPulse;
+        });
+      }
+      
       // Le Master Dimmer global n'écrase plus les faders individuels des groupes
       // Il agit comme un multiplicateur final (via le backend DMX)
     } else if (action === 'strobe') {
@@ -773,12 +790,21 @@ export const LiveTab = ({
           setIsAmbianceAutoColorActive(newState);
           // Le Master pilote les cartes : on active/désactive l'Auto-Color sur chaque groupe lié
           const newGroupAuto = { ...groupAutoColorActive };
+          const newColors = { ...groupColors };
           linkedGroups.forEach(id => {
             newGroupAuto[id] = newState;
+            // Réinitialiser la sélection manuelle de couleur quand l'Auto s'active
+            if (newState) newColors[id] = { r: 255, g: 255, b: 255, v: undefined };
           });
           setGroupAutoColorActive(newGroupAuto);
+          setGroupColors(newColors);
         } else {
-          setGroupAutoColorActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: !prev[groupId] }));
+          const newState = !groupAutoColorActive[groupId];
+          setGroupAutoColorActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: newState }));
+          // Réinitialiser la sélection manuelle de couleur quand l'Auto s'active pour ce groupe
+          if (newState) {
+            setGroupColors((prev: Record<string, any>) => ({ ...prev, [groupId]: { r: 255, g: 255, b: 255, v: undefined } }));
+          }
         }
         break;
       case 'U2': // STROBE FAST (Flash de 1s)
@@ -839,6 +865,10 @@ export const LiveTab = ({
           const newState = !groupAutoGoboActive[groupId];
           setGroupAutoGoboActive((prev: Record<string, boolean>) => ({ ...prev, [groupId]: newState }));
           
+          // Réinitialiser la sélection manuelle de Gobo quand l'Auto s'active
+          if (newState) {
+            setGroupGobos((prev: Record<string, number>) => ({ ...prev, [groupId]: -1 })); // -1 pour aucune sélection
+          }
           // L'effet DMX sera géré par le useEffect de cycle automatique
         }
         break;
@@ -966,6 +996,8 @@ export const LiveTab = ({
           groupPan={groupPan}
           groupTilt={groupTilt}
           liveGroupPositions={liveGroupPositions}
+          liveGroupColors={liveGroupColors}
+          liveGroupGobos={liveGroupGobos}
           sendIntensity={sendIntensity}
           sendColor={sendColor}
           sendMovement={sendMovement}

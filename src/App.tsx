@@ -134,6 +134,8 @@ function App() {
   const [bpm, setBpm] = useState(120);
 
   const [liveGroupPositions, setLiveGroupPositions] = useState<Record<string, { pan: number, tilt: number }>>({});
+  const [liveGroupColors, setLiveGroupColors] = useState<Record<string, number>>({});
+  const [liveGroupGobos, setLiveGroupGobos] = useState<Record<string, number>>({});
   // --------------------------------------------------------------------------
   
   // Initialisation des fixtures depuis localStorage ou données par défaut
@@ -484,7 +486,10 @@ function App() {
       groupAutoColorActive[id] === true && groups.some(g => g.id === id)
     );
     
-    if (activeGroups.length === 0) return;
+    if (activeGroups.length === 0) {
+      if (Object.keys(liveGroupColors).length > 0) setLiveGroupColors({});
+      return;
+    }
 
     const wheelColors = [
       { r: 255, g: 255, b: 255, v: 5 },  { r: 255, g: 0,   b: 0,   v: 16 },
@@ -494,18 +499,21 @@ function App() {
     ];
 
     const interval = setInterval(() => {
+      const newLiveColors: Record<string, number> = {};
       activeGroups.forEach(groupId => {
         const group = groups.find(g => g.id === groupId);
         if (group) {
           const hasMovingHead = fixtures.some(f => group.fixtureIds.includes(f.id) && f.type === 'Moving Head');
           if (hasMovingHead) {
-            const colorIndex = Math.floor((Date.now() / 1000) % wheelColors.length);
+            // Cycle plus lent pour les lyres (Color Wheel), changement toutes les 1.5 secondes
+            const colorIndex = Math.floor((Date.now() / 1500) % wheelColors.length);
             const color = wheelColors[colorIndex];
+            newLiveColors[groupId] = color.v;
             
             group.fixtureIds.forEach(id => {
               const f = fixtures.find(fx => fx.id === id);
               if (f && f.type === 'Moving Head') {
-                updateDmx(f.address + 7, color.v);   // PicoSpot CH8 : Color Wheel
+                updateDmx(f.address + 5, color.v);   // PicoSpot CH6 : Color Wheel (address+5)
               }
             });
           } else {
@@ -523,6 +531,7 @@ function App() {
           }
         }
       });
+      setLiveGroupColors(newLiveColors);
     }, 50); // Fréquence augmentée à 20Hz (50ms) pour des transitions fluides
 
     return () => clearInterval(interval);
@@ -567,6 +576,41 @@ function App() {
 
     return () => clearInterval(interval);
   }, [groupPulseActive, bpm, groups, fixtures]);
+
+  // Logique Auto-Gobo
+  useEffect(() => {
+    const activeGroups = Object.keys(groupAutoGoboActive).filter(id => 
+      groupAutoGoboActive[id] === true && groups.some(g => g.id === id)
+    );
+    
+    if (activeGroups.length === 0) {
+      if (Object.keys(liveGroupGobos).length > 0) setLiveGroupGobos({});
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const newLiveGobos: Record<string, number> = {};
+      activeGroups.forEach(groupId => {
+        const group = groups.find(g => g.id === groupId);
+        if (group) {
+          // Cycle des gobos (0-7), changement toutes les 2 secondes
+          const goboIndex = Math.floor((Date.now() / 2000) % 8);
+          const dmxValue = goboIndex * 32;
+          newLiveGobos[groupId] = goboIndex;
+          
+          group.fixtureIds.forEach(id => {
+            const f = fixtures.find(fx => fx.id === id);
+            if (f && f.type === 'Moving Head') {
+              updateDmx(f.address + 6, dmxValue);   // PicoSpot CH7 : Gobo (address+6)
+            }
+          });
+        }
+      });
+      setLiveGroupGobos(newLiveGobos);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [groupAutoGoboActive, groups, fixtures]);
 
   const handlePortChange = async (newPort: string) => {
     setSelectedPort(newPort);
@@ -673,6 +717,8 @@ function App() {
             fixtureCalibration={fixtureCalibration}
             setFixtureCalibration={setFixtureCalibration}
             liveGroupPositions={liveGroupPositions}
+            liveGroupColors={liveGroupColors}
+            liveGroupGobos={liveGroupGobos}
             
             // Intensités pour le moteur Auto-Color
             groupIntensities={groupIntensities}

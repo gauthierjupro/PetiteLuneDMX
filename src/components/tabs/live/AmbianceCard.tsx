@@ -103,11 +103,14 @@ export const AmbianceCard = ({
                 onColorSelect={(r, g, b) => onColorChange(r, g, b)}
                 onUserColorEdit={onUserColorEdit}
                 userColors={userColors}
+                buttonSize="w-10 h-10"
               />
               <MacroButtons 
                 onMacro={onMacro}
                 isAutoActive={isAutoActive}
                 isPulseActive={isPulseActive}
+                buttonHeight="h-10"
+                buttonWidth="w-[88px]"
               />
             </div>
           </div>
