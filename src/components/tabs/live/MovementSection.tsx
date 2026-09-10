@@ -4,15 +4,30 @@ import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 import { Tooltip } from '../../ui/Tooltip';
 import { VerticalSlider } from '../../ui/VerticalSlider';
+import type {
+  Fixture,
+  FixtureControlAction,
+  Group,
+  GroupMovement,
+  GroupPosition,
+  LivePanTilt,
+  MovementPreset,
+  RgbColor,
+  GroupIntensity,
+} from '../../../types';
 
 interface MovementSectionProps {
-  groups: any[];
-  fixtures: any[];
+  groups: Group[];
+  fixtures: Fixture[];
   handlePanChange: (val: string) => void;
   handleTiltChange: (val: string) => void;
-  handleMultiFixtureAction: (ids: number[], action: any, val: any) => void;
-  groupColors: Record<string, {r: number, g: number, b: number, v?: number}>;
-  groupIntensities: Record<string, {dim: number, str: number}>;
+  handleMultiFixtureAction: (
+    ids: number[],
+    action: FixtureControlAction,
+    val: number | RgbColor
+  ) => void;
+  groupColors: Record<string, RgbColor>;
+  groupIntensities: Record<string, GroupIntensity>;
   currentMasterIntensity: number;
   groupPulseActive: Record<string, boolean>;
   groupAutoColorActive: Record<string, boolean>;
@@ -20,31 +35,30 @@ interface MovementSectionProps {
   groupGobos: Record<string, number>;
   groupPan: Record<string, number>;
   groupTilt: Record<string, number>;
-  liveGroupPositions: Record<string, { pan: number, tilt: number }>;
+  liveGroupPositions: Record<string, LivePanTilt>;
   liveGroupColors: Record<string, number>;
   liveGroupGobos: Record<string, number>;
   sendIntensity: (ids: number[], type: 'dim' | 'str', val: number, groupId?: string) => void;
-  sendColor: (ids: number[], r: number, g: number, b: number, groupId?: string, isAuto?: boolean, wheelValue?: number) => void;
+  sendColor: (
+    ids: number[],
+    r: number,
+    g: number,
+    b: number,
+    groupId?: string,
+    isAuto?: boolean,
+    wheelValue?: number
+  ) => void;
   sendMovement: (ids: number[], pan: number, tilt: number, groupId: string) => void;
   handleMacro: (ids: number[], macro: string, groupId?: string) => void;
   onStrobeEdit: (groupId: string | null) => void;
   groupStrobeValues: Record<string, number>;
-  channels: any[];
+  channels: number[];
   updateDmx: (channel: number, value: number) => void;
   onOpenCalibration: () => void;
   onOpenEffects: (groupId: string, groupName: string, fixtureIds: number[]) => void;
-  groupPositions: Record<string, { x: number, y: number, label: string }[]>;
-  groupMovementPresets: Record<string, { 
-    shape: string,
-    speed: number,
-    sizePan: number,
-    sizeTilt: number,
-    fan: number,
-    invert180: boolean,
-    label: string,
-    customPoints?: {x: number, y: number}[] 
-  }[]>;
-  setGroupMovements: (val: any) => void;
+  groupPositions: Record<string, GroupPosition[]>;
+  groupMovementPresets: Record<string, MovementPreset[]>;
+  setGroupMovements: React.Dispatch<React.SetStateAction<Record<string, GroupMovement>>>;
 }
 
 export const MovementSection = ({

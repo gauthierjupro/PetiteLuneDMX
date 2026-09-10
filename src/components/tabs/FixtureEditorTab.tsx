@@ -1,22 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/tauri';
+import { save } from '@tauri-apps/api/dialog';
 import { GlassCard } from '../ui/GlassCard';
-import { Plus, Trash2, Save, Box, Sliders, Info, PlusCircle } from 'lucide-react';
-
-interface ChannelDef {
-  index: number;
-  name: string;
-  type: 'dimmer' | 'red' | 'green' | 'blue' | 'white' | 'pan' | 'tilt' | 'strobe' | 'gobo' | 'color' | 'speed' | 'other';
-}
-
-interface FixtureProfile {
-  id: string;
-  name: string;
-  manufacturer: string;
-  model: string;
-  channels: number;
-  type: 'RGB' | 'Moving Head' | 'Laser' | 'Effect' | 'Other';
-  channelDefs: ChannelDef[];
-}
+import { Plus, Trash2, Save, Box, Sliders, Info, PlusCircle, Download, Upload } from 'lucide-react';
+import type { ChannelDef, ChannelFunctionType, FixtureProfile } from '../../types';
+import {
+  exportFixtureProfilesJson,
+  parseFixtureProfilesImport,
+  validateFixtureProfiles,
+} from '../../utils/fixtureProfiles';
+import { setLocalStorageJsonDebounced } from '../../utils/localStorageDebounced';
 
 export const FixtureEditorTab = () => {
   const [profiles, setProfiles] = useState<FixtureProfile[]>([]);
@@ -138,8 +131,48 @@ export const FixtureEditorTab = () => {
   }, []);
 
   const saveProfiles = (newProfiles: FixtureProfile[]) => {
+    const check = validateFixtureProfiles(newProfiles);
+    if (check.ok === false) {
+      alert(check.error);
+      return;
+    }
     setProfiles(newProfiles);
-    localStorage.setItem('fixture_profiles', JSON.stringify(newProfiles));
+    setLocalStorageJsonDebounced('fixture_profiles', newProfiles);
+  };
+
+  const handleExportLibrary = async () => {
+    try {
+      const path = await save({
+        filters: [{ name: 'Profils JSON', extensions: ['json'] }],
+        defaultPath: 'fixture-profiles.json',
+      });
+      if (!path || typeof path !== 'string') return;
+      await invoke('save_text_file', {
+        path,
+        contents: exportFixtureProfilesJson(profiles),
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleImportLibrary = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const parsed = parseFixtureProfilesImport(text);
+      if (parsed.ok === false) {
+        alert(parsed.error);
+        return;
+      }
+      if (!confirm(`Remplacer la librairie par ${parsed.profiles.length} profil(s) ?`)) return;
+      saveProfiles(parsed.profiles);
+    };
+    input.click();
   };
 
   const createNewProfile = () => {
@@ -184,7 +217,7 @@ export const FixtureEditorTab = () => {
     });
   };
 
-  const updateChannel = (idx: number, field: keyof ChannelDef, value: any) => {
+  const updateChannel = (idx: number, field: keyof ChannelDef, value: string | number | ChannelFunctionType) => {
     if (!editingProfile) return;
     const newDefs = editingProfile.channelDefs.map((d, i) => 
       i === idx ? { ...d, [field]: value } : d
@@ -205,6 +238,24 @@ export const FixtureEditorTab = () => {
       {/* Liste des Profils */}
       <div className="col-span-4 space-y-4">
         <GlassCard title="Librairie" icon={Box}>
+          <div className="flex gap-2 mb-3">
+            <button
+              type="button"
+              onClick={handleExportLibrary}
+              className="flex-1 py-2 text-[9px] font-black uppercase tracking-wider bg-white/5 border border-white/10 rounded-xl hover:border-cyan-500/40 text-slate-400 hover:text-cyan-400 flex items-center justify-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Exporter
+            </button>
+            <button
+              type="button"
+              onClick={handleImportLibrary}
+              className="flex-1 py-2 text-[9px] font-black uppercase tracking-wider bg-white/5 border border-white/10 rounded-xl hover:border-cyan-500/40 text-slate-400 hover:text-cyan-400 flex items-center justify-center gap-1.5"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Importer
+            </button>
+          </div>
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
             <button 
               onClick={createNewProfile}
@@ -283,7 +334,7 @@ export const FixtureEditorTab = () => {
                   <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Type de Machine</label>
                   <select 
                     value={editingProfile.type}
-                    onChange={(e) => setEditingProfile({ ...editingProfile, type: e.target.value as any })}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, type: e.target.value as FixtureProfile['type'] })}
                     className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-xs focus:border-cyan-500 outline-none transition-all appearance-none cursor-pointer"
                   >
                     <option value="RGB">LED / RGB</option>
@@ -320,7 +371,7 @@ export const FixtureEditorTab = () => {
                       />
                       <select 
                         value={def.type}
-                        onChange={(e) => updateChannel(i, 'type', e.target.value as any)}
+                        onChange={(e) => updateChannel(i, 'type', e.target.value as ChannelFunctionType)}
                         className="bg-slate-800 border-none rounded-lg text-[10px] font-black uppercase px-2 py-1 cursor-pointer outline-none"
                       >
                         <option value="dimmer">Dimmer</option>

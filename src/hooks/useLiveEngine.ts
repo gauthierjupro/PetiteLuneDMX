@@ -1,0 +1,239 @@
+import { useEffect } from 'react';
+import { Fixture, Group } from '../types';
+import { hslToRgb } from '../utils/colorUtils';
+import { invokeUpdateDmx } from '../utils/dmxInvoke';
+import { buildLiveMotionPayload, fetchMotionPreview, syncLiveMotions } from '../utils/motionSync';
+import { LiveStore } from './useLiveStore';
+
+interface UseLiveEngineParams {
+  fixtures: Fixture[];
+  groups: Group[];
+  live: LiveStore;
+  updateDmx: (ch: number, val: string | number) => Promise<void>;
+  reportDmxError: (message: string) => void;
+}
+
+/** Boucles DMX Live (intensité, auto-color, auto-gobo) + sync mouvement Rust. */
+export function useLiveEngine({
+  fixtures,
+  groups,
+  live,
+  updateDmx,
+  reportDmxError,
+}: UseLiveEngineParams) {
+  const {
+    groupMovements,
+    groupPan,
+    groupTilt,
+    groupAutoColorActive,
+    groupAutoGoboActive,
+    groupIntensities,
+    groupPulseActive,
+    fixtureCalibration,
+    masterDimmer,
+    bpm,
+    liveGroupPositions,
+    setLiveGroupPositions,
+    liveGroupColors,
+    setLiveGroupColors,
+    liveGroupGobos,
+    setLiveGroupGobos,
+  } = live;
+
+  // Sync mouvements → moteur Rust (source de vérité unique)
+  useEffect(() => {
+    const payload = buildLiveMotionPayload(
+      groups,
+      fixtures,
+      groupMovements,
+      groupPan,
+      groupTilt,
+      fixtureCalibration
+    );
+    void syncLiveMotions(payload).catch((e) => {
+      console.warn('[Motion] sync_live_motions échoué:', e);
+      reportDmxError(e instanceof Error ? e.message : String(e));
+    });
+  }, [
+    groups,
+    fixtures,
+    groupMovements,
+    groupPan,
+    groupTilt,
+    fixtureCalibration,
+    reportDmxError,
+  ]);
+
+  // Aperçu UI des positions (calculées côté Rust à 40 Hz)
+  useEffect(() => {
+    const hasActive = Object.keys(groupMovements).some(
+      (id) =>
+        groupMovements[id]?.shape !== 'none' && groups.some((g) => g.id === id)
+    );
+
+    if (!hasActive) {
+      if (Object.keys(liveGroupPositions).length > 0) setLiveGroupPositions({});
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void fetchMotionPreview()
+        .then((preview) => {
+          const next: Record<string, { pan: number; tilt: number }> = {};
+          Object.entries(preview).forEach(([id, pos]) => {
+            if (id === '__legacy__') return;
+            next[id] = { pan: pos.pan, tilt: pos.tilt };
+          });
+          setLiveGroupPositions(next);
+        })
+        .catch(() => {});
+    }, 50);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupMovements, groups, setLiveGroupPositions]);
+
+  // Boucle Master d'intensité (50fps)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const beatDuration = (60 / bpm) * 1000;
+      const elapsed = Date.now();
+      const progress = (elapsed % beatDuration) / beatDuration;
+      const decay = Math.pow(1 - progress, 2);
+      const pulseVal = Math.round(255 * decay);
+
+      fixtures.forEach((fixture) => {
+        const group = groups.find((g) => g.fixtureIds.includes(fixture.id));
+        const groupId = group?.id;
+        const groupDim = groupId ? (groupIntensities[groupId]?.dim ?? 255) : 255;
+        const masterLimit = masterDimmer / 255;
+        const localLimit = groupDim / 255;
+        const isPulseActive = groupId && groupPulseActive[groupId];
+
+        const finalIntensity = isPulseActive
+          ? Math.round(pulseVal * localLimit * masterLimit)
+          : Math.round(255 * localLimit * masterLimit);
+
+        const start = fixture.address - 1;
+        if (fixture.type === 'RGB') {
+          void invokeUpdateDmx(start + 1, finalIntensity, reportDmxError);
+        } else if (fixture.type === 'Moving Head') {
+          void invokeUpdateDmx(start + 6, finalIntensity, reportDmxError);
+        } else if (fixture.type === 'Effect') {
+          void invokeUpdateDmx(start + 1, finalIntensity, reportDmxError);
+        }
+      });
+    }, 20);
+
+    return () => clearInterval(interval);
+  }, [
+    fixtures,
+    groups,
+    groupIntensities,
+    masterDimmer,
+    groupPulseActive,
+    bpm,
+    reportDmxError,
+  ]);
+
+  // Auto-Color
+  useEffect(() => {
+    const activeGroups = Object.keys(groupAutoColorActive).filter(
+      (id) =>
+        groupAutoColorActive[id] === true && groups.some((g) => g.id === id)
+    );
+
+    if (activeGroups.length === 0) {
+      if (Object.keys(liveGroupColors).length > 0) setLiveGroupColors({});
+      return;
+    }
+
+    const wheelColors = [
+      { r: 255, g: 255, b: 255, v: 5 },
+      { r: 255, g: 0, b: 0, v: 16 },
+      { r: 255, g: 128, b: 0, v: 27 },
+      { r: 255, g: 255, b: 0, v: 38 },
+      { r: 0, g: 255, b: 0, v: 49 },
+      { r: 0, g: 0, b: 255, v: 60 },
+      { r: 0, g: 255, b: 255, v: 71 },
+      { r: 255, g: 0, b: 255, v: 82 },
+    ];
+
+    const interval = setInterval(() => {
+      const newLiveColors: Record<string, number> = {};
+      activeGroups.forEach((groupId) => {
+        const group = groups.find((g) => g.id === groupId);
+        if (!group) return;
+
+        const hasMovingHead = fixtures.some(
+          (f) => group.fixtureIds.includes(f.id) && f.type === 'Moving Head'
+        );
+
+        if (hasMovingHead) {
+          const colorIndex = Math.floor((Date.now() / 1500) % wheelColors.length);
+          const color = wheelColors[colorIndex];
+          newLiveColors[groupId] = color.v;
+
+          group.fixtureIds.forEach((id) => {
+            const f = fixtures.find((fx) => fx.id === id);
+            if (f && f.type === 'Moving Head') {
+              void updateDmx(f.address + 5, color.v);
+            }
+          });
+        } else {
+          const currentHue = (Date.now() / 20) % 360;
+          const { r, g, b } = hslToRgb(currentHue, 100, 50);
+
+          group.fixtureIds.forEach((id) => {
+            const f = fixtures.find((fx) => fx.id === id);
+            if (f && f.type === 'RGB') {
+              void updateDmx(f.address, r);
+              void updateDmx(f.address + 1, g);
+              void updateDmx(f.address + 2, b);
+            }
+          });
+        }
+      });
+      setLiveGroupColors(newLiveColors);
+    }, 50);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupAutoColorActive, groups, fixtures, updateDmx, setLiveGroupColors]);
+
+  // Auto-Gobo
+  useEffect(() => {
+    const activeGroups = Object.keys(groupAutoGoboActive).filter(
+      (id) =>
+        groupAutoGoboActive[id] === true && groups.some((g) => g.id === id)
+    );
+
+    if (activeGroups.length === 0) {
+      if (Object.keys(liveGroupGobos).length > 0) setLiveGroupGobos({});
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const newLiveGobos: Record<string, number> = {};
+      activeGroups.forEach((groupId) => {
+        const group = groups.find((g) => g.id === groupId);
+        if (!group) return;
+
+        const goboIndex = Math.floor((Date.now() / 2000) % 8);
+        const dmxValue = goboIndex * 32;
+        newLiveGobos[groupId] = goboIndex;
+
+        group.fixtureIds.forEach((id) => {
+          const f = fixtures.find((fx) => fx.id === id);
+          if (f && f.type === 'Moving Head') {
+            void updateDmx(f.address + 6, dmxValue);
+          }
+        });
+      });
+      setLiveGroupGobos(newLiveGobos);
+    }, 100);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupAutoGoboActive, groups, fixtures, updateDmx, setLiveGroupGobos]);
+}

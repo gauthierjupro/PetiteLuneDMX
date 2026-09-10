@@ -8,7 +8,7 @@ import { ValuePromptModal } from '../../ui/ValuePromptModal';
 interface MasterGlobalSectionProps {
   masterVal: number;
   globalStrobe: number;
-  handleGlobalAction: (action: 'dimmer' | 'color' | 'strobe', value: any) => void;
+  handleGlobalAction: (action: 'dimmer' | 'color' | 'strobe', value: number | { r: number; g: number; b: number }) => void;
   handleEndOfSong: () => void;
   bpm: number;
   setBpm: (val: number) => void;
@@ -127,6 +127,10 @@ export const MasterGlobalSection = ({
               />
             </div>
           </div>
+
+          <p className="text-[8px] font-bold uppercase text-slate-600 tracking-wider px-2">
+            B blackout · T tap · ↵ GO cue
+          </p>
 
           {/* SECTION 3 : RYTHME / AUDIO (Intégration Horizontale) */}
           <div className="flex items-center gap-6 px-6 border-r border-white/10 h-full flex-1">

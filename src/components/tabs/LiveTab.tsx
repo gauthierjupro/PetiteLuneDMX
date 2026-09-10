@@ -1,5 +1,11 @@
-import React from 'react';
+﻿import React, { useCallback, useMemo, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/tauri';
 import { useLiveLogic } from '../../hooks/useLiveLogic';
+import { useCueList } from '../../hooks/useCueList';
+import { CueListSection } from './live/CueListSection';
+import { useLiveKeyboardShortcuts } from '../../hooks/live/useLiveKeyboardShortcuts';
+import { useLiveUndo } from '../../hooks/live/useLiveUndo';
+import type { ShowCue } from '../../types';
 import { AmbianceSection } from './live/AmbianceSection';
 import { MovementSection } from './live/MovementSection';
 import { MasterGlobalSection } from './live/MasterGlobalSection';
@@ -9,20 +15,27 @@ import { ColorPickerModal } from './live/ColorPickerModal';
 import { SavePresetModal } from './live/SavePresetModal';
 import { CalibrationModal } from './live/CalibrationModal';
 import { EffectsModal } from './live/EffectsModal';
-
-interface CalibrationSettings {
-  invertPan: boolean;
-  invertTilt: boolean;
-  offsetPan: number;
-  offsetTilt: number;
-}
+import type {
+  CalibrationSettings,
+  CustomTrajectory,
+  Fixture,
+  FixtureControlAction,
+  Group,
+  GroupControlAction,
+  GroupIntensity,
+  GroupMovement,
+  GroupPosition,
+  LivePanTilt,
+  MovementPreset,
+  RgbColor,
+} from '../../types';
 
 interface LiveTabProps {
-  fixtures: any[];
+  fixtures: Fixture[];
   channels: number[];
   pan: number;
   tilt: number;
-  groups: any[];
+  groups: Group[];
   selectedGroup: string | null;
   setSelectedGroup: (id: string | null) => void;
   selectedFixtures: number[];
@@ -30,51 +43,51 @@ interface LiveTabProps {
   updateDmx: (ch: number, val: string | number) => void;
   handlePanChange: (val: string) => void;
   handleTiltChange: (val: string) => void;
-  handleMultiFixtureAction: (fixtureIds: number[], action: 'dimmer' | 'color' | 'strobe' | 'pan' | 'tilt', value: any) => void;
-  handleGroupAction: (groupId: string, action: 'dimmer' | 'color' | 'strobe', value: any) => void;
+  handleMultiFixtureAction: (
+    fixtureIds: number[],
+    action: FixtureControlAction,
+    value: number | RgbColor
+  ) => void;
+  handleGroupAction: (
+    groupId: string,
+    action: GroupControlAction,
+    value: number | RgbColor
+  ) => void;
   handleMasterDimmer: (val: number) => void;
   applyGlobalIntensity: (val: number) => void;
   masterDimmer: number;
   handleMasterStrobe: (val: number) => void;
   onRenameGroup: (groupId: string, newName: string) => void;
 
-  groupIntensities: Record<string, {dim: number, str: number}>;
-  setGroupIntensities: React.Dispatch<React.SetStateAction<any>>;
-  groupColors: Record<string, {r: number, g: number, b: number, v?: number}>;
-  setGroupColors: React.Dispatch<React.SetStateAction<any>>;
+  groupIntensities: Record<string, GroupIntensity>;
+  setGroupIntensities: React.Dispatch<React.SetStateAction<Record<string, GroupIntensity>>>;
+  groupColors: Record<string, RgbColor>;
+  setGroupColors: React.Dispatch<React.SetStateAction<Record<string, RgbColor>>>;
   groupPulseActive: Record<string, boolean>;
-  setGroupPulseActive: React.Dispatch<React.SetStateAction<any>>;
+  setGroupPulseActive: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   bpm: number;
-  setBpm: React.Dispatch<React.SetStateAction<any>>;
-  groupMovements: Record<string, { 
-    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep' | 'custom', 
-    speed: number, 
-    sizePan: number,
-    sizeTilt: number,
-    fan: number,
-    invert180: boolean,
-    customPoints?: {x: number, y: number}[]
-  }>;
-  setGroupMovements: React.Dispatch<React.SetStateAction<any>>;
+  setBpm: React.Dispatch<React.SetStateAction<number>>;
+  groupMovements: Record<string, GroupMovement>;
+  setGroupMovements: React.Dispatch<React.SetStateAction<Record<string, GroupMovement>>>;
   groupPan: Record<string, number>;
-  setGroupPan: React.Dispatch<React.SetStateAction<any>>;
+  setGroupPan: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   groupTilt: Record<string, number>;
-  setGroupTilt: React.Dispatch<React.SetStateAction<any>>;
+  setGroupTilt: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   groupAutoColorActive: Record<string, boolean>;
-  setGroupAutoColorActive: React.Dispatch<React.SetStateAction<any>>;
+  setGroupAutoColorActive: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   groupAutoGoboActive: Record<string, boolean>;
-  setGroupAutoGoboActive: React.Dispatch<React.SetStateAction<any>>;
+  setGroupAutoGoboActive: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   groupGobos: Record<string, number>;
-  setGroupGobos: React.Dispatch<React.SetStateAction<any>>;
-  groupPositions: Record<string, { x: number, y: number, label: string }[]>;
-  setGroupPositions: React.Dispatch<React.SetStateAction<any>>;
-  groupMovementPresets: Record<string, { shape: string, speed: number, sizePan: number, sizeTilt: number, fan: number, invert180: boolean, label: string }[]>;
-  setGroupMovementPresets: React.Dispatch<React.SetStateAction<any>>;
-  groupCustomTrajectories: Record<string, { id: string, label: string, points: {x: number, y: number}[] }[]>;
-  setGroupCustomTrajectories: React.Dispatch<React.SetStateAction<any>>;
+  setGroupGobos: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  groupPositions: Record<string, GroupPosition[]>;
+  setGroupPositions: React.Dispatch<React.SetStateAction<Record<string, GroupPosition[]>>>;
+  groupMovementPresets: Record<string, MovementPreset[]>;
+  setGroupMovementPresets: React.Dispatch<React.SetStateAction<Record<string, MovementPreset[]>>>;
+  groupCustomTrajectories: Record<string, CustomTrajectory[]>;
+  setGroupCustomTrajectories: React.Dispatch<React.SetStateAction<Record<string, CustomTrajectory[]>>>;
   fixtureCalibration: Record<number, CalibrationSettings>;
-  setFixtureCalibration: React.Dispatch<React.SetStateAction<any>>;
-  liveGroupPositions: Record<string, { pan: number, tilt: number }>;
+  setFixtureCalibration: React.Dispatch<React.SetStateAction<Record<number, CalibrationSettings>>>;
+  liveGroupPositions: Record<string, LivePanTilt>;
   liveGroupColors: Record<string, number>;
   liveGroupGobos: Record<string, number>;
 }
@@ -92,6 +105,21 @@ export const LiveTab = (props: LiveTabProps) => {
     setGroupCustomTrajectories, fixtureCalibration, setFixtureCalibration, liveGroupPositions,
     liveGroupColors, liveGroupGobos
   } = props;
+
+  const { cues, addCueFromChannels, removeCue, reorderCue } = useCueList();
+  const cueIndexRef = useRef(0);
+  const { pushSnapshot, popSnapshot } = useLiveUndo();
+
+  const handleGoCue = useCallback(
+    async (cue: ShowCue) => {
+      for (let i = 0; i < cue.channels.length; i++) {
+        if (cue.channels[i] !== channels[i]) {
+          await updateDmx(i, cue.channels[i]);
+        }
+      }
+    },
+    [channels, updateDmx]
+  );
 
   const logic = useLiveLogic({
     fixtures, channels, groups, updateDmx, handleMultiFixtureAction,
@@ -125,6 +153,69 @@ export const LiveTab = (props: LiveTabProps) => {
     g.isAmbiance === true
   );
 
+  const applyAmbiancePresetWithUndo = useCallback(
+    (presetId: string) => {
+      pushSnapshot({
+        masterDimmer,
+        groupIntensities,
+        groupColors,
+        groupAutoColorActive,
+        groupPulseActive,
+      });
+      applyAmbiancePreset(presetId);
+    },
+    [
+      pushSnapshot,
+      masterDimmer,
+      groupIntensities,
+      groupColors,
+      groupAutoColorActive,
+      groupPulseActive,
+      applyAmbiancePreset,
+    ]
+  );
+
+  const goNextCue = useCallback(() => {
+    if (cues.length === 0) return;
+    const idx = cueIndexRef.current % cues.length;
+    void handleGoCue(cues[idx]);
+    cueIndexRef.current = (idx + 1) % cues.length;
+  }, [cues, handleGoCue]);
+
+  const onBlackout = useCallback(async () => {
+    await invoke('blackout');
+    handleGlobalAction('dimmer', 0);
+  }, [handleGlobalAction]);
+
+  const onUndoLive = useCallback(() => {
+    const snap = popSnapshot();
+    if (!snap) return;
+    handleMasterDimmer(snap.masterDimmer);
+    setGroupIntensities(snap.groupIntensities);
+    setGroupColors(snap.groupColors);
+    setGroupAutoColorActive(snap.groupAutoColorActive);
+    setGroupPulseActive(snap.groupPulseActive);
+  }, [
+    popSnapshot,
+    handleMasterDimmer,
+    setGroupIntensities,
+    setGroupColors,
+    setGroupAutoColorActive,
+    setGroupPulseActive,
+  ]);
+
+  const keyboardActions = useMemo(
+    () => ({
+      onBlackout,
+      onTapTempo: handleTap,
+      onGoCue: goNextCue,
+      onUndo: onUndoLive,
+    }),
+    [onBlackout, handleTap, goNextCue, onUndoLive]
+  );
+
+  useLiveKeyboardShortcuts(true, keyboardActions);
+
   return (
     <div className="flex h-[calc(100vh-140px)] gap-6 overflow-hidden">
       
@@ -132,6 +223,15 @@ export const LiveTab = (props: LiveTabProps) => {
       <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar space-y-8 pb-20">
         
         {/* SECTION MASTER GLOBAL (Format Ultra-Compact) */}
+        <CueListSection
+          channels={channels}
+          cues={cues}
+          onAddCue={addCueFromChannels}
+          onRemoveCue={removeCue}
+          onReorderCue={reorderCue}
+          onGoCue={handleGoCue}
+        />
+
         <MasterGlobalSection 
           masterVal={masterDimmer}
           globalStrobe={globalStrobe}
@@ -171,7 +271,7 @@ export const LiveTab = (props: LiveTabProps) => {
           groupAutoColorActive={groupAutoColorActive}
           groupPulseActive={groupPulseActive}
           customPresets={customPresets}
-          applyAmbiancePreset={applyAmbiancePreset}
+          applyAmbiancePreset={applyAmbiancePresetWithUndo}
           setPresetToSaveId={setPresetToSaveId}
           setIsSavePresetModalOpen={setIsSavePresetModalOpen}
           fadeTime={fadeTime}
@@ -262,7 +362,7 @@ export const LiveTab = (props: LiveTabProps) => {
         />
 
         {/* SECTION RYTHME ET EFFETS */}
-        {/* Masqué car remplacé par les modales d'effets par groupe */}
+        {/* Masqu├® car remplac├® par les modales d'effets par groupe */}
         {false && <RythmeSection 
           fixtures={fixtures}
           channels={channels}
@@ -270,7 +370,7 @@ export const LiveTab = (props: LiveTabProps) => {
         />}
       </div>
 
-      {/* MODALES DE RÉGLAGES */}
+      {/* MODALES DE R├ëGLAGES */}
       <StrobeModal 
         isOpen={isStrobeModalOpen}
         onClose={() => setIsStrobeModalOpen(false)}
@@ -288,7 +388,7 @@ export const LiveTab = (props: LiveTabProps) => {
       <ColorPickerModal 
         isOpen={isColorModalOpen}
         onClose={() => setIsColorModalOpen(false)}
-        title={`SÉLECTEUR DE COULEURS ${activeColorGroupId ? '(GROUPE)' : '(MASTER)'}`}
+        title={`S├ëLECTEUR DE COULEURS ${activeColorGroupId ? '(GROUPE)' : '(MASTER)'}`}
         tempColor={tempColor}
         tempHue={tempHue}
         tempSat={tempSat}

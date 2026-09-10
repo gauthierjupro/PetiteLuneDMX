@@ -2,17 +2,7 @@ import React from 'react';
 import { GlassCard } from '../ui/GlassCard';
 import { ControlSlider } from '../ui/ControlSlider';
 import { Layout, Settings as SettingsIcon, Sun, Move, Zap, Wind } from 'lucide-react';
-
-interface Fixture {
-  id: number;
-  name: string;
-  manufacturer: string;
-  model: string;
-  address: number;
-  channels: number;
-  type: string;
-  channelMap?: string[];
-}
+import type { Fixture } from '../../types';
 
 interface FixturesTabProps {
   fixtures: Fixture[];

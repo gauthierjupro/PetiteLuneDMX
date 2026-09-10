@@ -3,14 +3,21 @@ import { GlassCard } from '../ui/GlassCard';
 import { Layout, Edit2, Zap, Plus, Trash2, X, Check, Users, FileText, FolderOpen, Copy, Clipboard } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { open } from '@tauri-apps/api/dialog';
-import { ValuePromptModal } from '../ui/ValuePromptModal';
+import { setLocalStorageJsonDebounced } from '../../utils/localStorageDebounced';
+import type { Fixture, Group, NewFixtureInput } from '../../types';
+import { DEFAULT_DMX_UNIVERSE_ID } from '../../types';
+import {
+  getFixtureBg,
+  getFixtureColor,
+  getFixtureLabelBg,
+} from './patch/fixtureTypeStyles';
 
 interface PatchTabProps {
-  fixtures: any[];
-  groups: any[];
+  fixtures: Fixture[];
+  groups: Group[];
   channels: number[];
   onUpdateAddress: (id: number, newAddress: number) => void;
-  onAddFixture: (fixture: any) => void;
+  onAddFixture: (fixture: NewFixtureInput) => void;
   onDeleteFixture: (id: number) => void;
   onIdentify?: (fixtureId: number) => void;
   onCreateGroup: (name: string) => void;
@@ -68,37 +75,7 @@ export const PatchTab = ({
   const savePdfLink = (fixtureId: number, filename: string) => {
     const newLinks = { ...customPdfLinks, [fixtureId]: filename };
     setCustomPdfLinks(newLinks);
-    localStorage.setItem('dmx_custom_pdf_links', JSON.stringify(newLinks));
-  };
-
-  const getFixtureColor = (type: string) => {
-    switch (type) {
-      case 'RGB': return 'from-emerald-500 to-teal-600';
-      case 'Moving Head': return 'from-blue-500 to-indigo-600';
-      case 'Laser': return 'from-rose-500 to-pink-600';
-      case 'Effect': return 'from-amber-500 to-orange-600';
-      default: return 'from-slate-500 to-slate-600';
-    }
-  };
-
-  const getFixtureBg = (type: string) => {
-    switch (type) {
-      case 'RGB': return 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300';
-      case 'Moving Head': return 'bg-blue-500/20 border-blue-500/40 text-blue-300';
-      case 'Laser': return 'bg-rose-500/20 border-rose-500/40 text-rose-300';
-      case 'Effect': return 'bg-amber-500/20 border-amber-500/40 text-amber-300';
-      default: return 'bg-slate-500/20 border-slate-500/40 text-slate-300';
-    }
-  };
-
-  const getFixtureLabelBg = (type: string) => {
-    switch (type) {
-      case 'RGB': return 'bg-emerald-500 text-[#05070a]';
-      case 'Moving Head': return 'bg-blue-500 text-[#05070a]';
-      case 'Laser': return 'bg-rose-500 text-white';
-      case 'Effect': return 'bg-amber-500 text-[#05070a]';
-      default: return 'bg-slate-500 text-white';
-    }
+    setLocalStorageJsonDebounced('dmx_custom_pdf_links', newLinks);
   };
 
   const getGroupById = (fixtureId: number) => {
@@ -115,8 +92,9 @@ export const PatchTab = ({
       model: profile.model,
       type: profile.type,
       address: newFixture.address,
-      channels: profile.channels.length,
-      channelMap: profile.channels
+      channels: profile.channels,
+      universeId: DEFAULT_DMX_UNIVERSE_ID,
+      channelMap: profile.channelDefs?.map((d: { name: string }) => d.name),
     });
 
     setIsAdding(false);
@@ -260,7 +238,7 @@ export const PatchTab = ({
                       ? `${getFixtureBg(fixtureAtAddr.type)} shadow-[inset_0_0_10px_rgba(0,0,0,0.2)] bg-gradient-to-br ${getFixtureColor(fixtureAtAddr.type)} opacity-80` 
                       : 'bg-slate-800/40 border border-white/5 text-slate-500 hover:bg-slate-800/60'
                   } ${isStartOfFixture ? 'ring-2 ring-white/30 ring-inset shadow-lg' : ''}`}
-                  title={fixtureAtAddr ? `${fixtureAtAddr.name} (${fixtureAtAddr.type}) ${getGroupById(fixtureAtAddr.id) ? `[Groupe: ${getGroupById(fixtureAtAddr.id).name}]` : ''} - Ch ${channelNum - fixtureAtAddr.address + 1}` : `Canal ${channelNum}`}
+                  title={fixtureAtAddr ? `${fixtureAtAddr.name} (${fixtureAtAddr.type}) ${(() => { const g = getGroupById(fixtureAtAddr.id); return g ? `[Groupe: ${g.name}]` : ''; })()} - Ch ${channelNum - fixtureAtAddr.address + 1}` : `Canal ${channelNum}`}
                 >
                   {/* Indicateur de début de fixture */}
                   {isStartOfFixture && (
@@ -472,7 +450,7 @@ export const PatchTab = ({
                   {getGroupById(fixture.id) && (
                     <div className="pt-2 flex items-center gap-2">
                       <span className="text-[8px] font-black uppercase text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
-                        Groupe: {getGroupById(fixture.id).name}
+                        Groupe: {getGroupById(fixture.id)?.name}
                       </span>
                     </div>
                   )}

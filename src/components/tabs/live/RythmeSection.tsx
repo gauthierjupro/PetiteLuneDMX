@@ -2,9 +2,10 @@ import React from 'react';
 import { Zap, Wind } from 'lucide-react';
 import { Tooltip } from '../../ui/Tooltip';
 import { ControlSlider } from '../../ui/ControlSlider';
+import type { Fixture } from '../../../types';
 
 interface RythmeSectionProps {
-  fixtures: any[];
+  fixtures: Fixture[];
   channels: number[];
   updateDmx: (ch: number, val: number) => void;
 }
@@ -39,7 +40,7 @@ export const RythmeSection = ({
               <ControlSlider 
                 label="Vitesse / Réactivité" 
                 value={channels[f.address-1]} 
-                onChange={(v) => updateDmx(f.address-1, v)} 
+                onChange={(v) => updateDmx(f.address - 1, typeof v === 'number' ? v : parseInt(String(v), 10))} 
                 color="bg-cyan-500" 
               />
               <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">

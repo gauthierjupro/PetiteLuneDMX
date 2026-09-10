@@ -1,18 +1,12 @@
 import React from 'react';
 import { Modal } from '../../ui/Modal';
 import { Settings2, RotateCcw, Info } from 'lucide-react';
-
-interface CalibrationSettings {
-  invertPan: boolean;
-  invertTilt: boolean;
-  offsetPan: number;
-  offsetTilt: number;
-}
+import type { CalibrationSettings, Fixture } from '../../../types';
 
 interface CalibrationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  fixtures: any[];
+  fixtures: Fixture[];
   calibration: Record<number, CalibrationSettings>;
   onUpdateCalibration: (fixtureId: number, settings: Partial<CalibrationSettings>) => void;
   onReset: (fixtureId: number) => void;

@@ -1,715 +1,177 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import {
   Zap,
-  Activity,
   Settings as SettingsIcon,
   Layout,
-  RefreshCw,
   Edit2,
-  Users,
-  Move,
-  Sliders,
   Maximize2,
   Box,
-  Info
+  Database,
+  Sliders,
+  Info,
 } from 'lucide-react';
 
-import fixturesData from './data/fixtures_patch.json';
-import groupsData from './data/groups.json';
-import { hslToRgb } from './utils/colorUtils';
-
-// Components
 import { LiveTab } from './components/tabs/LiveTab';
 import { FixturesTab } from './components/tabs/FixturesTab';
 import { PatchTab } from './components/tabs/PatchTab';
 import { DmxConsoleTab } from './components/tabs/DmxConsoleTab';
 import { StageTab } from './components/tabs/StageTab';
+import { Stage3DTab } from './components/tabs/Stage3DTab';
 import { FixtureEditorTab } from './components/tabs/FixtureEditorTab';
-import { GlassCard } from './components/ui/GlassCard';
+import { SettingsTab } from './components/tabs/SettingsTab';
 import { AboutModal } from './components/ui/AboutModal';
+import { ConnectionStatus } from './components/ui/ConnectionStatus';
 
-type TabType = 'live' | 'fixtures' | 'patch' | 'console' | 'stage' | 'editor' | 'settings';
+import { TabType, FixtureControlAction, GroupControlAction, RgbColor } from './types';
+import { usePatchStore } from './hooks/usePatchStore';
+import { useLiveStore } from './hooks/useLiveStore';
+import { useSettingsStore } from './hooks/useSettingsStore';
+import { useLiveEngine } from './hooks/useLiveEngine';
+import { useAppPreferences } from './hooks/useAppPreferences';
+import { useWebMidi } from './hooks/useWebMidi';
+import { FirstShowWizard } from './components/ui/FirstShowWizard';
 
-interface CalibrationSettings {
-  invertPan: boolean;
-  invertTilt: boolean;
-  offsetPan: number;
-  offsetTilt: number;
-}
+const APP_VERSION = '1.7.0';
 
-interface Fixture {
-  id: number;
-  name: string;
-  manufacturer: string;
-  model: string;
-  address: number;
-  channels: number;
-  type: string;
-}
-
-interface Group {
-  id: string;
-  name: string;
-  fixtureIds: number[];
-  isAmbiance?: boolean;
-}
+const TABS = [
+  { id: 'live' as const, label: 'Live', icon: Zap },
+  { id: 'fixtures' as const, label: 'Projecteurs', icon: Layout },
+  { id: 'stage' as const, label: 'Plateau', icon: Maximize2 },
+  { id: 'stage3d' as const, label: 'Vue 3D', icon: Box },
+  { id: 'editor' as const, label: 'Librairie', icon: Database },
+  { id: 'console' as const, label: 'Vue DMX', icon: Sliders },
+  { id: 'patch' as const, label: 'Patch', icon: Edit2 },
+  { id: 'settings' as const, label: 'Réglages', icon: SettingsIcon },
+];
 
 function App() {
-  const APP_VERSION = "1.6.0";
-  const [channels, setChannels] = useState<number[]>(Array(512).fill(0));
-  const [isConnected, setIsConnected] = useState(false);
-  const [pan, setPan] = useState(127);
-  const [tilt, setTilt] = useState(127);
+  const patch = usePatchStore();
+  const live = useLiveStore();
+  const settings = useSettingsStore();
+  const prefs = useAppPreferences();
+
+  useLiveEngine({
+    fixtures: patch.fixtures,
+    groups: patch.groups,
+    live,
+    updateDmx: settings.updateDmx,
+    reportDmxError: settings.reportDmxError,
+  });
+
   const [activeTab, setActiveTab] = useState<TabType>('live');
   const [selectedFixture, setSelectedFixture] = useState<number | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [selectedPort, setSelectedPort] = useState('COM3');
   const [selectedFixtures, setSelectedFixtures] = useState<number[]>([]);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
 
-  // --- États du Moteur DMX (Migrés de LiveTab pour tourner en arrière-plan) ---
-  const [groupMovements, setGroupMovements] = useState<Record<string, { 
-    shape: 'none' | 'circle' | 'eight' | 'pan_sweep' | 'tilt_sweep' | 'custom', 
-    speed: number, 
-    sizePan: number,
-    sizeTilt: number,
-    fan: number,
-    invert180: boolean,
-    customPoints?: {x: number, y: number}[]
-  }>>(() => {
-    const saved = localStorage.getItem('dmx_group_movements');
-    return saved ? JSON.parse(saved) : {};
+  useWebMidi(prefs.midiEnabled, activeTab === 'live', (val) => {
+    live.setMasterDimmer(val);
   });
 
-  const [groupCustomTrajectories, setGroupCustomTrajectories] = useState<Record<string, {
-    id: string,
-    label: string,
-    points: {x: number, y: number}[]
-  }[]>>(() => {
-    const saved = localStorage.getItem('dmx_custom_trajectories');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  useEffect(() => {
-    localStorage.setItem('dmx_custom_trajectories', JSON.stringify(groupCustomTrajectories));
-  }, [groupCustomTrajectories]);
-
-  const [groupPan, setGroupPan] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem('dmx_group_pan');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [groupTilt, setGroupTilt] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem('dmx_group_tilt');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [groupAutoColorActive, setGroupAutoColorActive] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('dmx_group_auto_color');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [groupAutoGoboActive, setGroupAutoGoboActive] = useState<Record<string, boolean>>(() => {
-     const saved = localStorage.getItem('dmx_group_auto_gobo');
-     return saved ? JSON.parse(saved) : {};
-   });
- 
-   const [groupIntensities, setGroupIntensities] = useState<Record<string, {dim: number, str: number}>>(() => {
-     const saved = localStorage.getItem('dmx_group_intensities');
-     return saved ? JSON.parse(saved) : {};
-   });
-
-   const [groupColors, setGroupColors] = useState<Record<string, {r: number, g: number, b: number, v?: number}>>(() => {
-     const saved = localStorage.getItem('dmx_group_colors');
-     return saved ? JSON.parse(saved) : {};
-   });
-
-   const [groupGobos, setGroupGobos] = useState<Record<string, number>>(() => {
-     const saved = localStorage.getItem('dmx_group_gobos');
-     return saved ? JSON.parse(saved) : {};
-   });
- 
-   const [groupPositions, setGroupPositions] = useState<Record<string, { 
-     x: number, 
-     y: number, 
-     label: string 
-   }[]>>(() => {
-     const saved = localStorage.getItem('dmx_group_positions');
-     return saved ? JSON.parse(saved) : {};
-   });
- 
-   const [groupMovementPresets, setGroupMovementPresets] = useState<Record<string, { 
-     shape: string,
-     speed: number,
-     sizePan: number,
-     sizeTilt: number,
-     fan: number,
-     invert180: boolean,
-     label: string 
-   }[]>>(() => {
-     const saved = localStorage.getItem('dmx_group_movement_presets');
-     return saved ? JSON.parse(saved) : {};
-   });
- 
-   const [fixtureCalibration, setFixtureCalibration] = useState<Record<number, CalibrationSettings>>(() => {
-    const saved = localStorage.getItem('dmx_fixture_calibration');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [groupPulseActive, setGroupPulseActive] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('dmx_group_pulse');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [masterDimmer, setMasterDimmer] = useState<number>(() => {
-    const saved = localStorage.getItem('dmx_master_dimmer');
-    return saved ? parseInt(saved) : 255;
-  });
-
-  const [bpm, setBpm] = useState(120);
-
-  const [liveGroupPositions, setLiveGroupPositions] = useState<Record<string, { pan: number, tilt: number }>>({});
-  const [liveGroupColors, setLiveGroupColors] = useState<Record<string, number>>({});
-  const [liveGroupGobos, setLiveGroupGobos] = useState<Record<string, number>>({});
-  // --------------------------------------------------------------------------
-  
-  // Initialisation des fixtures depuis localStorage ou données par défaut
-  const [fixtures, setFixtures] = useState<Fixture[]>(() => {
-    const saved = localStorage.getItem('dmx_patched_fixtures');
-    return saved ? JSON.parse(saved) : fixturesData;
-  });
-
-  const [groups, setGroups] = useState<Group[]>(() => {
-    const saved = localStorage.getItem('dmx_groups');
-    return saved ? JSON.parse(saved) : groupsData;
-  });
-
-  // Sauvegarde des fixtures quand elles changent
-  useEffect(() => {
-    localStorage.setItem('dmx_patched_fixtures', JSON.stringify(fixtures));
-  }, [fixtures]);
-
-  // Sauvegarde des groupes quand ils changent
-  useEffect(() => {
-    localStorage.setItem('dmx_groups', JSON.stringify(groups));
-  }, [groups]);
-
-  // Sauvegarde des états du moteur DMX
-  useEffect(() => {
-    localStorage.setItem('dmx_group_movements', JSON.stringify(groupMovements));
-    localStorage.setItem('dmx_group_pan', JSON.stringify(groupPan));
-    localStorage.setItem('dmx_group_tilt', JSON.stringify(groupTilt));
-    localStorage.setItem('dmx_group_auto_color', JSON.stringify(groupAutoColorActive));
-    localStorage.setItem('dmx_group_auto_gobo', JSON.stringify(groupAutoGoboActive));
-    localStorage.setItem('dmx_group_pulse', JSON.stringify(groupPulseActive));
-    localStorage.setItem('dmx_group_intensities', JSON.stringify(groupIntensities));
-    localStorage.setItem('dmx_group_colors', JSON.stringify(groupColors));
-    localStorage.setItem('dmx_group_gobos', JSON.stringify(groupGobos));
-    localStorage.setItem('dmx_group_positions', JSON.stringify(groupPositions));
-    localStorage.setItem('dmx_group_movement_presets', JSON.stringify(groupMovementPresets));
-    localStorage.setItem('dmx_fixture_calibration', JSON.stringify(fixtureCalibration));
-    localStorage.setItem('dmx_master_dimmer', masterDimmer.toString());
-  }, [groupMovements, groupPan, groupTilt, groupAutoColorActive, groupAutoGoboActive, groupPulseActive, groupIntensities, groupColors, groupGobos, groupPositions, groupMovementPresets, fixtureCalibration, masterDimmer]);
-
-  const getFixtureById = (id: number | null) => fixtures.find((f: Fixture) => f.id === id);
-
-  // Sync avec le backend Rust
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const status = await invoke<boolean>('get_connection_status');
-        setIsConnected(status);
-        const universe = await invoke<number[]>('get_universe');
-        if (universe && universe.length > 0) {
-          // On ne met à jour QUE si les données ont changé pour économiser les re-renders
-          setChannels(prev => {
-            const hasChanged = universe.some((val, i) => val !== prev[i]);
-            return hasChanged ? [...universe] : prev;
-          });
-        }
-      } catch (e) {
-        console.error("Erreur status:", e);
-      }
-    }, 50); // Réduit à 50ms pour une vue fluide (20Hz)
-    return () => clearInterval(interval);
-  }, []);
-
-  const updateDmx = async (ch: number, val: string | number) => {
-    // On arrondit systématiquement à l'entier le plus proche (le DMX ne gère que 0-255)
-    const rawVal = typeof val === 'string' ? parseFloat(val) : val;
-    const numVal = Math.round(Math.min(255, Math.max(0, rawVal)));
-    
-    // Mettre à jour l'état local immédiatement pour la vue DMX
-    setChannels(prev => {
-      if (prev[ch] === numVal) return prev;
-      const newChannels = [...prev];
-      newChannels[ch] = numVal;
-      return newChannels;
-    });
-
-    try {
-      await invoke('update_dmx', { channel: ch + 1, value: numVal });
-    } catch (e) {
-      // Éviter de logguer en boucle les erreurs de port
-    }
-  };
-
-  const computeFinalIntensity = (fixtureId: number, baseValue: number, currentMaster?: number) => {
-    // On trouve le groupe de cette fixture
-    const group = groups.find((g: Group) => g.fixtureIds.includes(fixtureId));
-    const groupDim = group ? (groupIntensities[group.id]?.dim ?? 255) : 255;
-    
-    const master = currentMaster !== undefined ? currentMaster : masterDimmer;
-    
-    // Formule multiplicative : Base * (Groupe/255) * (Master/255)
-    return Math.round(baseValue * (groupDim / 255) * (master / 255));
-  };
-
-  const applyGlobalIntensity = async (val: number) => {
-    // Cette fonction est maintenant obsolète car gérée par la boucle Master
+  const applyGlobalIntensity = async (_val: number) => {
+    // Géré par la boucle Master dans useLiveEngine
   };
 
   const handleMasterDimmer = async (val: number) => {
-    setMasterDimmer(val);
-    // Plus besoin d'envoyer DMX ici, la boucle Master s'en charge à 50Hz
+    live.setMasterDimmer(val);
   };
 
   const handleMasterStrobe = async (val: number) => {
-    for (const fixture of fixtures) {
+    for (const fixture of patch.fixtures) {
       const start = fixture.address - 1;
       if (fixture.type === 'RGB') {
-        await updateDmx(start + 4, val); // CH5 pour Flood Panel
+        await settings.updateDmx(start + 4, val);
       } else if (fixture.type === 'Moving Head') {
-        await updateDmx(start + 8, val); // CH9 pour PicoSpot
+        await settings.updateDmx(start + 8, val);
       }
     }
   };
 
-  const handleMultiFixtureAction = async (fixtureIds: number[], action: 'dimmer' | 'color' | 'strobe' | 'pan' | 'tilt', value: any) => {
+  const handleMultiFixtureAction = async (
+    fixtureIds: number[],
+    action: FixtureControlAction,
+    value: number | RgbColor
+  ) => {
     for (const fixtureId of fixtureIds) {
-      const fixture = fixtures.find((f: Fixture) => f.id === fixtureId);
+      const fixture = patch.fixtures.find((f) => f.id === fixtureId);
       if (!fixture) continue;
-
       const start = fixture.address - 1;
 
-      if (action === 'dimmer') {
-        // La boucle Master s'en chargera via groupIntensities
-      } else if (action === 'strobe') {
-        if (fixture.type === 'RGB') await updateDmx(start + 4, value);
-        else if (fixture.type === 'Moving Head') await updateDmx(start + 8, value);
-      } else if (action === 'color') {
-        if (fixture.type === 'RGB') {
-          await updateDmx(start + 1, value.r);
-          await updateDmx(start + 2, value.g);
-          await updateDmx(start + 3, value.b);
-        }
-      } else if (action === 'pan') {
-        if (fixture.type === 'Moving Head') await updateDmx(start, value);
-      } else if (action === 'tilt') {
-        if (fixture.type === 'Moving Head') await updateDmx(start + 2, value);
+      if (action === 'strobe' && typeof value === 'number') {
+        if (fixture.type === 'RGB') await settings.updateDmx(start + 4, value);
+        else if (fixture.type === 'Moving Head') await settings.updateDmx(start + 8, value);
+      } else if (action === 'color' && fixture.type === 'RGB' && typeof value === 'object') {
+        await settings.updateDmx(start + 1, value.r);
+        await settings.updateDmx(start + 2, value.g);
+        await settings.updateDmx(start + 3, value.b);
+      } else if (action === 'pan' && fixture.type === 'Moving Head' && typeof value === 'number') {
+        await settings.updateDmx(start, value);
+      } else if (action === 'tilt' && fixture.type === 'Moving Head' && typeof value === 'number') {
+        await settings.updateDmx(start + 2, value);
       }
     }
   };
 
-  const handleGroupAction = async (groupId: string, action: 'dimmer' | 'color' | 'strobe', value: any) => {
-    const group = groups.find((g: Group) => g.id === groupId);
-    if (!group) return;
-
-    if (action === 'dimmer') {
-       // La boucle Master s'en chargera via groupIntensities
-       return;
-    }
+  const handleGroupAction = async (
+    groupId: string,
+    action: GroupControlAction,
+    value: number | RgbColor
+  ) => {
+    const group = patch.groups.find((g) => g.id === groupId);
+    if (!group || action === 'dimmer') return;
 
     for (const fixtureId of group.fixtureIds) {
-      const fixture = fixtures.find((f: Fixture) => f.id === fixtureId);
+      const fixture = patch.fixtures.find((f) => f.id === fixtureId);
       if (!fixture) continue;
-
       const start = fixture.address - 1;
 
-      if (action === 'strobe') {
-        if (fixture.type === 'RGB') {
-          await updateDmx(start + 4, value);
-        } else if (fixture.type === 'Moving Head') {
-          await updateDmx(start + 8, value);
-        }
-      } else if (action === 'color') {
-        if (fixture.type === 'RGB') {
-          await updateDmx(start + 1, value.r);
-          await updateDmx(start + 2, value.g);
-          await updateDmx(start + 3, value.b);
-        }
+      if (action === 'strobe' && typeof value === 'number') {
+        if (fixture.type === 'RGB') await settings.updateDmx(start + 4, value);
+        else if (fixture.type === 'Moving Head') await settings.updateDmx(start + 8, value);
+      } else if (action === 'color' && fixture.type === 'RGB' && typeof value === 'object') {
+        await settings.updateDmx(start + 1, value.r);
+        await settings.updateDmx(start + 2, value.g);
+        await settings.updateDmx(start + 3, value.b);
       }
     }
-  };
-
-  const handleRenameGroup = (groupId: string, newName: string) => {
-    setGroups((prev: Group[]) => prev.map((g: Group) => g.id === groupId ? { ...g, name: newName } : g));
-  };
-
-  const handleCreateGroup = (name: string) => {
-    const id = name.toLowerCase().replace(/\s+/g, '_');
-    setGroups((prev: Group[]) => [...prev, { id, name, fixtureIds: [], isAmbiance: false }]);
-  };
-
-  const handleDeleteGroup = (groupId: string) => {
-    setGroups((prev: Group[]) => prev.filter((g: Group) => g.id !== groupId));
-  };
-
-  const handleUpdateGroupFixtures = (groupId: string, fixtureIds: number[]) => {
-    setGroups((prev: Group[]) => prev.map((g: Group) => g.id === groupId ? { ...g, fixtureIds } : g));
-  };
-
-  const handleToggleGroupAmbiance = (groupId: string) => {
-    setGroups((prev: Group[]) => prev.map((g: Group) => g.id === groupId ? { ...g, isAmbiance: !g.isAmbiance } : g));
   };
 
   const handlePanChange = (val: string) => {
-    const numVal = parseInt(val);
-    setPan(numVal);
-    updateDmx(0, numVal);
+    const numVal = parseInt(val, 10);
+    live.setPan(numVal);
+    void settings.updateDmx(0, numVal);
   };
 
   const handleTiltChange = (val: string) => {
-    const numVal = parseInt(val);
-    setTilt(numVal);
-    updateDmx(1, numVal);
-  };
-
-  const handleUpdateAddress = (fixtureId: number, newAddress: number) => {
-    setFixtures((prev: Fixture[]) => prev.map((f: Fixture) => f.id === fixtureId ? { ...f, address: newAddress } : f));
-  };
-
-  const handleAddFixture = (newFixture: any) => {
-    setFixtures((prev: Fixture[]) => {
-      const nextId = prev.length > 0 ? Math.max(...prev.map((f: Fixture) => f.id)) + 1 : 1;
-      return [...prev, { ...newFixture, id: nextId }];
-    });
-  };
-
-  const handleDeleteFixture = (id: number) => {
-    setFixtures((prev: Fixture[]) => prev.filter((f: Fixture) => f.id !== id));
+    const numVal = parseInt(val, 10);
+    live.setTilt(numVal);
+    void settings.updateDmx(1, numVal);
   };
 
   const handleIdentify = async (fixtureId: number) => {
-    const fixture = getFixtureById(fixtureId);
+    const fixture = patch.getFixtureById(fixtureId);
     if (!fixture) return;
-    
+
     const start = fixture.address - 1;
     const len = fixture.channels;
-    
+
     try {
-      // Flash à 255
       for (let i = 0; i < len; i++) {
         await invoke('update_dmx', { channel: start + i + 1, value: 255 });
       }
-      
-      // Attendre 1.5s puis remettre à 0 (ou à l'état précédent, mais 0 est plus simple pour l'identification)
       setTimeout(async () => {
         for (let i = 0; i < len; i++) {
           await invoke('update_dmx', { channel: start + i + 1, value: 0 });
         }
       }, 1500);
     } catch (e) {
-      console.error("Erreur identification:", e);
+      console.error('Erreur identification:', e);
     }
-  };
-
-  // --- LOGIQUE DU MOTEUR DMX EN ARRIÈRE-PLAN ---
-
-  // Boucle Master d'intensité (50fps) - Gère Dimmers + Pulse sans conflits
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const beatDuration = (60 / bpm) * 1000;
-      const elapsed = Date.now();
-      const progress = (elapsed % beatDuration) / beatDuration;
-      const decay = Math.pow(1 - progress, 2);
-      const pulseVal = Math.round(255 * decay);
-
-      fixtures.forEach(fixture => {
-        const group = groups.find(g => g.fixtureIds.includes(fixture.id));
-        const groupId = group?.id;
-        
-        // Intensités de base (statiques)
-        const groupDim = groupId ? (groupIntensities[groupId]?.dim ?? 255) : 255;
-        const masterLimit = masterDimmer / 255;
-        const localLimit = groupDim / 255;
-        
-        let finalIntensity = 0;
-
-        // On vérifie si le Pulse global est actif OU si le pulse spécifique au groupe est actif
-        const isPulseActive = (groupId && groupPulseActive[groupId]);
-
-        if (isPulseActive) {
-          // Si Pulse actif : 0 -> 100% limité par les dimmers
-          finalIntensity = Math.round(pulseVal * localLimit * masterLimit);
-        } else {
-          // Sinon : intensité statique normale
-          finalIntensity = Math.round(255 * localLimit * masterLimit);
-        }
-
-        const start = fixture.address - 1;
-        // Envoi direct au backend pour fluidité maximale
-        if (fixture.type === 'RGB') {
-          invoke('update_dmx', { channel: start + 1, value: finalIntensity }).catch(() => {});
-        } else if (fixture.type === 'Moving Head') {
-          invoke('update_dmx', { channel: start + 6, value: finalIntensity }).catch(() => {});
-        } else if (fixture.type === 'Effect') {
-          invoke('update_dmx', { channel: start + 1, value: finalIntensity }).catch(() => {});
-        }
-      });
-    }, 20);
-
-    return () => clearInterval(interval);
-  }, [fixtures, groups, groupIntensities, masterDimmer, groupPulseActive, bpm]);
-
-  // Logique du générateur de mouvements (Shapes)
-  useEffect(() => {
-    const activeGroups = Object.keys(groupMovements).filter((id: string) => 
-      groupMovements[id]?.shape !== 'none' && groups.some((g: Group) => g.id === id)
-    );
-    
-    if (activeGroups.length === 0) {
-      if (Object.keys(liveGroupPositions).length > 0) setLiveGroupPositions({});
-      return;
-    }
-
-    let startTime = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      const newLivePositions: Record<string, { pan: number, tilt: number }> = {};
-
-      activeGroups.forEach((groupId: string) => {
-        const group = groups.find((g: Group) => g.id === groupId);
-        const config = groupMovements[groupId];
-        if (!group || !config) return;
-
-        const speed = config.speed / 50;
-        const sizePan = (config.sizePan ?? 64) / 2;
-        const sizeTilt = (config.sizeTilt ?? 64) / 2;
-        const fan = config.fan;
-
-        // Calcul de la position "live" pour le groupe
-        const basePhase = elapsed * speed;
-        let basePanOffset = 0;
-        let baseTiltOffset = 0;
-
-        switch (config.shape) {
-          case 'circle':
-            basePanOffset = Math.cos(basePhase) * sizePan;
-            baseTiltOffset = Math.sin(basePhase) * sizeTilt;
-            break;
-          case 'eight':
-            basePanOffset = Math.cos(basePhase) * sizePan;
-            baseTiltOffset = Math.sin(basePhase * 2) * (sizeTilt / 2);
-            break;
-          case 'pan_sweep':
-            basePanOffset = Math.cos(basePhase) * sizePan;
-            break;
-          case 'tilt_sweep':
-            baseTiltOffset = Math.sin(basePhase) * sizeTilt;
-            break;
-          case 'custom':
-            if (config.customPoints && config.customPoints.length > 1) {
-              const pts = config.customPoints;
-              const total = pts.length;
-              // On utilise un temps normalisé pour éviter les saccades en fin de boucle
-              const t = (basePhase % total);
-              const i = Math.floor(t);
-              const nextI = (i + 1) % total;
-              const frac = t - i;
-              
-              const p1 = pts[i];
-              const p2 = pts[nextI];
-              
-              // Interpolation linéaire continue
-              basePanOffset = (p1.x + (p2.x - p1.x) * frac - 127) * (config.sizePan / 128);
-              baseTiltOffset = (p1.y + (p2.y - p1.y) * frac - 127) * (config.sizeTilt / 128);
-            }
-            break;
-        }
-
-        newLivePositions[groupId] = {
-          pan: Math.min(255, Math.max(0, (groupPan[groupId] ?? 127) + basePanOffset)),
-          tilt: Math.min(255, Math.max(0, (groupTilt[groupId] ?? 127) + baseTiltOffset))
-        };
-
-        group.fixtureIds.forEach((id: number, index: number) => {
-          const fixture = fixtures.find((f: Fixture) => f.id === id);
-          if (fixture && fixture.type === 'Moving Head') {
-            const phase = elapsed * speed + (index * (fan / 255) * Math.PI * 2);
-            let panOffset = 0;
-            let tiltOffset = 0;
-
-            switch (config.shape) {
-              case 'circle':
-                panOffset = Math.cos(phase) * sizePan;
-                tiltOffset = Math.sin(phase) * sizeTilt;
-                break;
-              case 'eight':
-                panOffset = Math.cos(phase) * sizePan;
-                tiltOffset = Math.sin(phase * 2) * (sizeTilt / 2);
-                break;
-              case 'pan_sweep':
-                panOffset = Math.cos(phase) * sizePan;
-                break;
-              case 'tilt_sweep':
-                tiltOffset = Math.sin(phase) * sizeTilt;
-                break;
-              case 'custom':
-                if (config.customPoints && config.customPoints.length > 1) {
-                  const pts = config.customPoints;
-                  const total = pts.length;
-                  // On utilise un temps normalisé pour éviter les saccades en fin de boucle
-                  const t = (phase % total);
-                  const i = Math.floor(t);
-                  const nextI = (i + 1) % total;
-                  const frac = t - i;
-                  
-                  const p1 = pts[i];
-                  const p2 = pts[nextI];
-                  
-                  // Interpolation linéaire continue
-                  panOffset = (p1.x + (p2.x - p1.x) * frac - 127) * (config.sizePan / 128);
-                  tiltOffset = (p1.y + (p2.y - p1.y) * frac - 127) * (config.sizeTilt / 128);
-                }
-                break;
-            }
-
-            if (config.invert180 && index % 2 !== 0) {
-              panOffset = -panOffset;
-              tiltOffset = -tiltOffset;
-            }
-
-            const finalPan = Math.min(255, Math.max(0, (groupPan[groupId] ?? 127) + panOffset));
-            const finalTilt = Math.min(255, Math.max(0, (groupTilt[groupId] ?? 127) + tiltOffset));
-
-            const cal = fixtureCalibration[id] || { invertPan: false, invertTilt: false, offsetPan: 0, offsetTilt: 0 };
-            let calPan = Math.min(255, Math.max(0, finalPan + cal.offsetPan));
-            let calTilt = Math.min(255, Math.max(0, finalTilt + cal.offsetTilt));
-            
-            if (cal.invertPan) calPan = 255 - calPan;
-            if (cal.invertTilt) calTilt = 255 - calTilt;
-
-            // Utilisation d'un batch update ou invoke direct pour éviter la surcharge de l'état React
-            invoke('update_dmx', { channel: fixture.address, value: Math.round(calPan) }).catch(() => {});
-            invoke('update_dmx', { channel: fixture.address + 2, value: Math.round(calTilt) }).catch(() => {});
-          }
-        });
-      });
-
-      setLiveGroupPositions(newLivePositions);
-    }, 40);
-
-    return () => clearInterval(interval);
-  }, [groupMovements, groupPan, groupTilt, groups, fixtures, fixtureCalibration]);
-
-  // Logique Auto-Color
-  useEffect(() => {
-    const activeGroups = Object.keys(groupAutoColorActive).filter((id: string) => 
-      groupAutoColorActive[id] === true && groups.some((g: Group) => g.id === id)
-    );
-    
-    if (activeGroups.length === 0) {
-      if (Object.keys(liveGroupColors).length > 0) setLiveGroupColors({});
-      return;
-    }
-
-    const wheelColors = [
-      { r: 255, g: 255, b: 255, v: 5 },  { r: 255, g: 0,   b: 0,   v: 16 },
-      { r: 255, g: 128, b: 0,   v: 27 }, { r: 255, g: 255, b: 0,   v: 38 },
-      { r: 0,   g: 255, b: 0,   v: 49 }, { r: 0,   g: 0,   b: 255, v: 60 },
-      { r: 0,   g: 255, b: 255, v: 71 }, { r: 255, g: 0,   b: 255, v: 82 }
-    ];
-
-    const interval = setInterval(() => {
-      const newLiveColors: Record<string, number> = {};
-      activeGroups.forEach((groupId: string) => {
-        const group = groups.find((g: Group) => g.id === groupId);
-        if (group) {
-          const hasMovingHead = fixtures.some((f: Fixture) => group.fixtureIds.includes(f.id) && f.type === 'Moving Head');
-          if (hasMovingHead) {
-            // Cycle plus lent pour les lyres (Color Wheel), changement toutes les 1.5 secondes
-            const colorIndex = Math.floor((Date.now() / 1500) % wheelColors.length);
-            const color = wheelColors[colorIndex];
-            newLiveColors[groupId] = color.v;
-            
-            group.fixtureIds.forEach((id: number) => {
-              const f = fixtures.find((fx: Fixture) => fx.id === id);
-              if (f && f.type === 'Moving Head') {
-                updateDmx(f.address + 5, color.v);   // PicoSpot CH6 : Color Wheel (address+5)
-              }
-            });
-          } else {
-            const currentHue = (Date.now() / 20) % 360;
-            const { r, g, b } = hslToRgb(currentHue, 100, 50);
-            
-            group.fixtureIds.forEach((id: number) => {
-              const f = fixtures.find((fx: Fixture) => fx.id === id);
-              if (f && f.type === 'RGB') {
-                updateDmx(f.address, r);             // Canal 2 : Rouge
-                updateDmx(f.address + 1, g);         // Canal 3 : Vert
-                updateDmx(f.address + 2, b);         // Canal 4 : Bleu
-              }
-            });
-          }
-        }
-      });
-      setLiveGroupColors(newLiveColors);
-    }, 50); // Fréquence augmentée à 20Hz (50ms) pour des transitions fluides
-
-    return () => clearInterval(interval);
-  }, [groupAutoColorActive, groups, fixtures]);
-
-  // Logique du mode Pulse (synchronisé sur le BPM)
-  useEffect(() => {
-    // Cette logique est maintenant intégrée dans la boucle Master ci-dessus
-  }, []);
-
-  // Logique Auto-Gobo
-  useEffect(() => {
-    const activeGroups = Object.keys(groupAutoGoboActive).filter((id: string) => 
-      groupAutoGoboActive[id] === true && groups.some((g: Group) => g.id === id)
-    );
-    
-    if (activeGroups.length === 0) {
-      if (Object.keys(liveGroupGobos).length > 0) setLiveGroupGobos({});
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const newLiveGobos: Record<string, number> = {};
-      activeGroups.forEach((groupId: string) => {
-        const group = groups.find((g: Group) => g.id === groupId);
-        if (group) {
-          // Cycle des gobos (0-7), changement toutes les 2 secondes
-          const goboIndex = Math.floor((Date.now() / 2000) % 8);
-          const dmxValue = goboIndex * 32;
-          newLiveGobos[groupId] = goboIndex;
-          
-          group.fixtureIds.forEach((id: number) => {
-            const f = fixtures.find((fx: Fixture) => fx.id === id);
-            if (f && f.type === 'Moving Head') {
-              updateDmx(f.address + 6, dmxValue);   // PicoSpot CH7 : Gobo (address+6)
-            }
-          });
-        }
-      });
-      setLiveGroupGobos(newLiveGobos);
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [groupAutoGoboActive, groups, fixtures]);
-
-  const handlePortChange = async (newPort: string) => {
-    setSelectedPort(newPort);
-    console.log("Changement de port vers:", newPort);
   };
 
   return (
     <div className="min-h-screen bg-[#05070a] text-slate-200 p-8 font-sans selection:bg-cyan-500/30 flex flex-col">
-      
-      {/* Header */}
       <header className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-6">
           <div>
@@ -717,8 +179,10 @@ function App() {
               PETITELUNE<span className="text-cyan-500">DMX</span>
             </h1>
             <div className="flex items-center gap-3 mt-1">
-              <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">Pro Lighting Control v{APP_VERSION}</p>
-              <button 
+              <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">
+                Pro Lighting Control v{APP_VERSION}
+              </p>
+              <button
                 onClick={() => setIsAboutModalOpen(true)}
                 className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-slate-500 hover:text-cyan-400 transition-all active:scale-90"
                 title="Informations sur l'application"
@@ -728,23 +192,15 @@ function App() {
             </div>
           </div>
         </div>
-        
+
         <nav className="flex bg-slate-900/50 backdrop-blur-md p-1.5 rounded-2xl border border-white/5 gap-1">
-          {[
-            { id: 'live', label: 'Live', icon: Zap },
-            { id: 'fixtures', label: 'Projecteurs', icon: Layout },
-            { id: 'stage', label: 'Plateau', icon: Maximize2 },
-            { id: 'editor', label: 'Librairie', icon: Box },
-            { id: 'console', label: 'Vue DMX', icon: Sliders },
-            { id: 'patch', label: 'Patch', icon: Edit2 },
-            { id: 'settings', label: 'Réglages', icon: SettingsIcon },
-          ].map((tab) => (
+          {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
+              onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                activeTab === tab.id 
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
+                activeTab === tab.id
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
                   : 'text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent'
               }`}
             >
@@ -753,165 +209,150 @@ function App() {
             </button>
           ))}
         </nav>
-        
-        <div className={`flex items-center gap-3 px-5 py-2 rounded-full border ${
-          isConnected ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-400' : 'bg-red-500/10 border-red-500/50 text-red-400'
-        }`}>
-          <div className={`w-2 h-2 rounded-full animate-pulse ${isConnected ? 'bg-cyan-400' : 'bg-red-400'}`} />
-          <span className="text-xs font-bold uppercase tracking-widest">
-            {isConnected ? `Interface Active : ${selectedPort}` : 'Déconnecté'}
-          </span>
-          <RefreshCw className="w-4 h-4 ml-2 cursor-pointer hover:rotate-180 transition-transform duration-500" />
-        </div>
+
+        <ConnectionStatus
+          isConnected={settings.isConnected}
+          port={settings.selectedPort}
+          connectionError={settings.connectionError}
+          actualHz={settings.actualHz}
+          targetHz={settings.targetHz}
+          latencyMs={settings.latencyMs}
+          onReconnect={settings.handleForceReconnect}
+        />
       </header>
 
       <main className="flex-1">
         {activeTab === 'live' && (
-          <LiveTab 
-            fixtures={fixtures}
-            channels={channels} 
-            pan={pan} 
-            tilt={tilt} 
-            groups={groups}
+          <LiveTab
+            fixtures={patch.fixtures}
+            channels={settings.channels}
+            pan={live.pan}
+            tilt={live.tilt}
+            groups={patch.groups}
             selectedGroup={selectedGroup}
             setSelectedGroup={setSelectedGroup}
             selectedFixtures={selectedFixtures}
             setSelectedFixtures={setSelectedFixtures}
-            updateDmx={updateDmx} 
-            handlePanChange={handlePanChange} 
-            handleTiltChange={handleTiltChange} 
+            updateDmx={settings.updateDmx}
+            handlePanChange={handlePanChange}
+            handleTiltChange={handleTiltChange}
             handleGroupAction={handleGroupAction}
             handleMultiFixtureAction={handleMultiFixtureAction}
             handleMasterDimmer={handleMasterDimmer}
             applyGlobalIntensity={applyGlobalIntensity}
-            masterDimmer={masterDimmer}
+            masterDimmer={live.masterDimmer}
             handleMasterStrobe={handleMasterStrobe}
-            onRenameGroup={handleRenameGroup}
-            
-            // États migrés vers App pour persistance en arrière-plan
-            groupMovements={groupMovements}
-            setGroupMovements={setGroupMovements}
-            groupPan={groupPan}
-            setGroupPan={setGroupPan}
-            groupTilt={groupTilt}
-            setGroupTilt={setGroupTilt}
-            groupAutoColorActive={groupAutoColorActive}
-            setGroupAutoColorActive={setGroupAutoColorActive}
-            groupAutoGoboActive={groupAutoGoboActive}
-            setGroupAutoGoboActive={setGroupAutoGoboActive}
-            groupGobos={groupGobos}
-            setGroupGobos={setGroupGobos}
-            groupPositions={groupPositions}
-            setGroupPositions={setGroupPositions}
-            groupMovementPresets={groupMovementPresets}
-            setGroupMovementPresets={setGroupMovementPresets}
-            groupCustomTrajectories={groupCustomTrajectories}
-            setGroupCustomTrajectories={setGroupCustomTrajectories}
-            fixtureCalibration={fixtureCalibration}
-            setFixtureCalibration={setFixtureCalibration}
-            liveGroupPositions={liveGroupPositions}
-            liveGroupColors={liveGroupColors}
-            liveGroupGobos={liveGroupGobos}
-            
-            // Intensités pour le moteur Auto-Color
-            groupIntensities={groupIntensities}
-            setGroupIntensities={setGroupIntensities}
-            groupColors={groupColors}
-            setGroupColors={setGroupColors}
-            groupPulseActive={groupPulseActive}
-            setGroupPulseActive={setGroupPulseActive}
-            bpm={bpm}
-            setBpm={setBpm}
+            onRenameGroup={patch.handleRenameGroup}
+            groupMovements={live.groupMovements}
+            setGroupMovements={live.setGroupMovements}
+            groupPan={live.groupPan}
+            setGroupPan={live.setGroupPan}
+            groupTilt={live.groupTilt}
+            setGroupTilt={live.setGroupTilt}
+            groupAutoColorActive={live.groupAutoColorActive}
+            setGroupAutoColorActive={live.setGroupAutoColorActive}
+            groupAutoGoboActive={live.groupAutoGoboActive}
+            setGroupAutoGoboActive={live.setGroupAutoGoboActive}
+            groupGobos={live.groupGobos}
+            setGroupGobos={live.setGroupGobos}
+            groupPositions={live.groupPositions}
+            setGroupPositions={live.setGroupPositions}
+            groupMovementPresets={live.groupMovementPresets}
+            setGroupMovementPresets={live.setGroupMovementPresets}
+            groupCustomTrajectories={live.groupCustomTrajectories}
+            setGroupCustomTrajectories={live.setGroupCustomTrajectories}
+            fixtureCalibration={live.fixtureCalibration}
+            setFixtureCalibration={live.setFixtureCalibration}
+            liveGroupPositions={live.liveGroupPositions}
+            liveGroupColors={live.liveGroupColors}
+            liveGroupGobos={live.liveGroupGobos}
+            groupIntensities={live.groupIntensities}
+            setGroupIntensities={live.setGroupIntensities}
+            groupColors={live.groupColors}
+            setGroupColors={live.setGroupColors}
+            groupPulseActive={live.groupPulseActive}
+            setGroupPulseActive={live.setGroupPulseActive}
+            bpm={live.bpm}
+            setBpm={live.setBpm}
           />
         )}
 
         {activeTab === 'fixtures' && (
-          <FixturesTab 
-            fixtures={fixtures}
+          <FixturesTab
+            fixtures={patch.fixtures}
             selectedFixture={selectedFixture}
             setSelectedFixture={setSelectedFixture}
-            getFixtureById={getFixtureById}
-            channels={channels}
-            updateDmx={updateDmx}
+            getFixtureById={patch.getFixtureById}
+            channels={settings.channels}
+            updateDmx={settings.updateDmx}
             onIdentify={handleIdentify}
           />
         )}
 
         {activeTab === 'patch' && (
-          <PatchTab 
-            fixtures={fixtures}
-            groups={groups}
-            channels={channels}
-            onUpdateAddress={handleUpdateAddress}
-            onAddFixture={handleAddFixture}
-            onDeleteFixture={handleDeleteFixture}
+          <PatchTab
+            fixtures={patch.fixtures}
+            groups={patch.groups}
+            channels={settings.channels}
+            onUpdateAddress={patch.handleUpdateAddress}
+            onAddFixture={patch.handleAddFixture}
+            onDeleteFixture={patch.handleDeleteFixture}
             onIdentify={handleIdentify}
-            onCreateGroup={handleCreateGroup}
-            onDeleteGroup={handleDeleteGroup}
-            onUpdateGroupFixtures={handleUpdateGroupFixtures}
-            onRenameGroup={handleRenameGroup}
-            onToggleGroupAmbiance={handleToggleGroupAmbiance}
+            onCreateGroup={patch.handleCreateGroup}
+            onDeleteGroup={patch.handleDeleteGroup}
+            onUpdateGroupFixtures={patch.handleUpdateGroupFixtures}
+            onRenameGroup={patch.handleRenameGroup}
+            onToggleGroupAmbiance={patch.handleToggleGroupAmbiance}
           />
         )}
 
         {activeTab === 'console' && (
-          <DmxConsoleTab 
-            fixtures={fixtures}
-            channels={channels}
-            updateDmx={updateDmx}
+          <DmxConsoleTab
+            fixtures={patch.fixtures}
+            channels={settings.channels}
+            updateDmx={settings.updateDmx}
             onIdentify={handleIdentify}
           />
         )}
 
         {activeTab === 'stage' && (
-          <StageTab 
-            fixtures={fixtures}
-            channels={channels}
-          />
+          <StageTab fixtures={patch.fixtures} channels={settings.channels} />
         )}
 
-        {activeTab === 'editor' && (
-          <FixtureEditorTab />
+        {activeTab === 'stage3d' && (
+          <Stage3DTab fixtures={patch.fixtures} channels={settings.channels} />
         )}
+
+        {activeTab === 'editor' && <FixtureEditorTab />}
 
         {activeTab === 'settings' && (
-          <div className="max-w-2xl mx-auto">
-            <GlassCard title="Configuration Système" icon={SettingsIcon}>
-              <div className="space-y-6">
-                <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider">Interface DMX</p>
-                    <p className="text-[10px] text-slate-500">Enttec Open DMX / FT232R USB UART</p>
-                  </div>
-                  <select 
-                    value={selectedPort}
-                    onChange={(e) => handlePortChange(e.target.value)}
-                    className="bg-slate-800 border border-white/10 rounded-lg text-xs p-2 focus:outline-none focus:border-cyan-400 cursor-pointer"
-                  >
-                    <option value="COM1">COM1</option>
-                    <option value="COM2">COM2</option>
-                    <option value="COM3">COM3</option>
-                    <option value="COM4">COM4</option>
-                    <option value="COM99">COM99</option>
-                  </select>
-                </div>
-                <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider">Fréquence de Rafraîchissement</p>
-                    <p className="text-[10px] text-slate-500">Standard DMX (40Hz)</p>
-                  </div>
-                  <span className="text-cyan-400 font-mono text-xs">40 Hz</span>
-                </div>
-              </div>
-            </GlassCard>
-          </div>
+          <SettingsTab
+            selectedPort={settings.selectedPort}
+            onPortChange={settings.handlePortChange}
+            blackoutOnDisconnect={settings.blackoutOnDisconnect}
+            onBlackoutOnDisconnectChange={settings.handleBlackoutOnDisconnectChange}
+            isConnected={settings.isConnected}
+            connectionError={settings.connectionError}
+            actualHz={settings.actualHz}
+            targetHz={settings.targetHz}
+            latencyMs={settings.latencyMs}
+            appVersion={APP_VERSION}
+            theme={prefs.theme}
+            onThemeChange={prefs.setTheme}
+            density={prefs.density}
+            onDensityChange={prefs.setDensity}
+            midiEnabled={prefs.midiEnabled}
+            onMidiEnabledChange={prefs.setMidiEnabled}
+          />
         )}
       </main>
-      {/* Modale À Propos */}
-      <AboutModal 
-        isOpen={isAboutModalOpen} 
-        onClose={() => setIsAboutModalOpen(false)} 
-        version={APP_VERSION} 
+
+      <FirstShowWizard onGoToTab={(tab) => setActiveTab(tab)} />
+
+      <AboutModal
+        isOpen={isAboutModalOpen}
+        onClose={() => setIsAboutModalOpen(false)}
+        version={APP_VERSION}
       />
     </div>
   );

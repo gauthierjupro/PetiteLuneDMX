@@ -3,11 +3,12 @@ import { Maximize2 } from 'lucide-react';
 import { IntensityControls } from './IntensityControls';
 import { ColorGrid } from './ColorGrid';
 import { MacroButtons } from './MacroButtons';
+import type { Fixture, Group, GroupIntensity, RgbColor } from '../../../types';
 
 interface MasterAmbianceCardProps {
   linkedCount: number;
-  intensity: { dim: number, str: number };
-  color: { r: number, g: number, b: number };
+  intensity: GroupIntensity;
+  color: RgbColor;
   isAutoActive: boolean;
   isPulseActive: boolean;
   activeMacro: string | null;
@@ -16,12 +17,12 @@ interface MasterAmbianceCardProps {
   onMacro: (macro: string) => void;
   onStrobeContextMenu: () => void;
   onUserColorEdit: (id: string) => void;
-  userColors: any;
+  userColors: Record<string, RgbColor>;
   strobeShortcutVal: number;
   currentMasterIntensity: number;
   channels: number[];
-  fixtures: any[];
-  groups: any[];
+  fixtures: Fixture[];
+  groups: Group[];
   linkedGroups: string[];
 }
 

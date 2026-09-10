@@ -1,104 +1,418 @@
+use std::collections::HashMap;
 use std::f64::consts::PI;
+use std::time::Instant;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum MotionMode {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MotionShape {
+    None,
+    Circle,
+    Eight,
+    PanSweep,
+    TiltSweep,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MotionFixtureConfig {
+    /// Adresse DMX de départ (1-512)
+    pub address: usize,
+    /// Index dans le groupe (pour le fan / invert180)
+    pub index: usize,
+    pub invert_pan: bool,
+    pub invert_tilt: bool,
+    pub offset_pan: f64,
+    pub offset_tilt: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupMotionConfig {
+    pub group_id: String,
+    pub shape: MotionShape,
+    /// Vitesse Live (0-255), phase = elapsed * (speed/50)
+    pub speed: f64,
+    pub size_pan: f64,
+    pub size_tilt: f64,
+    pub fan: f64,
+    pub invert_180: bool,
+    pub center_pan: f64,
+    pub center_tilt: f64,
+    pub custom_points: Vec<MotionPoint>,
+    pub fixtures: Vec<MotionFixtureConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MotionPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MotionPreview {
+    pub pan: u8,
+    pub tilt: u8,
+}
+
+/// Compatibilité ancienne API EffectsTab (circle / streak / ellipse).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum LegacyMotionMode {
     #[serde(rename = "streak")]
-    Streak, // Figure-8
+    Streak,
     #[serde(rename = "circle")]
     Circle,
     #[serde(rename = "ellipse")]
     Ellipse,
 }
 
+/// Moteur de mouvement unique (source de vérité Live + backend 40 Hz).
 pub struct MotionManager {
-    center_x: f64,
-    center_y: f64,
-    amplitude: f64,
-    time_counter: f64,
+    groups: Vec<GroupMotionConfig>,
+    started_at: Instant,
+    legacy_mode: Option<LegacyMotionMode>,
+    legacy_center_x: f64,
+    legacy_center_y: f64,
+    legacy_amplitude: f64,
+    legacy_speed: f64,
+    legacy_addresses: Vec<usize>,
 }
 
 impl MotionManager {
-    pub fn new(center_x: f64, center_y: f64, amplitude: f64) -> Self {
+    pub fn new() -> Self {
         Self {
-            center_x,
-            center_y,
-            amplitude,
-            time_counter: 0.0,
+            groups: Vec::new(),
+            started_at: Instant::now(),
+            legacy_mode: None,
+            legacy_center_x: 0.5,
+            legacy_center_y: 0.5,
+            legacy_amplitude: 0.2,
+            legacy_speed: 0.5,
+            legacy_addresses: Vec::new(),
         }
     }
 
-    pub fn set_center(&mut self, x: f64, y: f64) {
-        self.center_x = x;
-        self.center_y = y;
+    pub fn sync_groups(&mut self, groups: Vec<GroupMotionConfig>) {
+        let legacy = self
+            .groups
+            .iter()
+            .find(|g| g.group_id == "__legacy__")
+            .cloned();
+
+        let new_groups: Vec<GroupMotionConfig> = groups
+            .into_iter()
+            .filter(|g| g.shape != MotionShape::None && !g.fixtures.is_empty())
+            .collect();
+
+        let old_sig = Self::motion_signature(
+            &self
+                .groups
+                .iter()
+                .filter(|g| g.group_id != "__legacy__")
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        let new_sig = Self::motion_signature(&new_groups);
+
+        self.groups = new_groups;
+        if let Some(leg) = legacy {
+            self.groups.push(leg);
+        }
+
+        // Ne reset le temps que si la forme / vitesse / fixtures changent (pas le centre XY)
+        if old_sig != new_sig {
+            self.started_at = Instant::now();
+        }
     }
 
-    pub fn set_amplitude(&mut self, amplitude: f64) {
-        self.amplitude = amplitude;
+    fn motion_signature(groups: &[GroupMotionConfig]) -> String {
+        let mut parts: Vec<String> = groups
+            .iter()
+            .map(|g| {
+                let fixtures: Vec<String> = g
+                    .fixtures
+                    .iter()
+                    .map(|f| format!("{}:{}", f.address, f.index))
+                    .collect();
+                format!(
+                    "{}|{:?}|{}|{}|{}|{}|{}|{:?}",
+                    g.group_id,
+                    g.shape,
+                    g.speed,
+                    g.size_pan,
+                    g.size_tilt,
+                    g.fan,
+                    g.invert_180,
+                    fixtures
+                )
+            })
+            .collect();
+        parts.sort();
+        parts.join(";")
+    }
+
+    fn rebuild_legacy(&mut self) {
+        self.groups.retain(|g| g.group_id != "__legacy__");
+        let Some(mode) = self.legacy_mode else {
+            return;
+        };
+        if self.legacy_addresses.is_empty() {
+            return;
+        }
+
+        let shape = match mode {
+            LegacyMotionMode::Circle => MotionShape::Circle,
+            LegacyMotionMode::Streak => MotionShape::Eight,
+            LegacyMotionMode::Ellipse => MotionShape::Circle,
+        };
+
+        let size = (self.legacy_amplitude * 128.0).clamp(8.0, 128.0);
+        let size_tilt = match mode {
+            LegacyMotionMode::Ellipse => size * 0.7,
+            _ => size,
+        };
+
+        let fixtures = self
+            .legacy_addresses
+            .iter()
+            .enumerate()
+            .map(|(index, &address)| MotionFixtureConfig {
+                address,
+                index,
+                invert_pan: false,
+                invert_tilt: false,
+                offset_pan: 0.0,
+                offset_tilt: 0.0,
+            })
+            .collect();
+
+        self.groups.push(GroupMotionConfig {
+            group_id: "__legacy__".to_string(),
+            shape,
+            speed: (self.legacy_speed * 255.0).clamp(1.0, 255.0),
+            size_pan: size,
+            size_tilt,
+            fan: 0.0,
+            invert_180: false,
+            center_pan: (self.legacy_center_x * 255.0).clamp(0.0, 255.0),
+            center_tilt: (self.legacy_center_y * 255.0).clamp(0.0, 255.0),
+            custom_points: Vec::new(),
+            fixtures,
+        });
+        self.started_at = Instant::now();
+    }
+
+    pub fn set_legacy_mode(&mut self, mode: Option<LegacyMotionMode>) {
+        self.legacy_mode = mode;
+        self.rebuild_legacy();
+    }
+
+    pub fn set_legacy_center(&mut self, x: f64, y: f64) {
+        self.legacy_center_x = x;
+        self.legacy_center_y = y;
+        self.rebuild_legacy();
+    }
+
+    pub fn set_legacy_amplitude(&mut self, amplitude: f64) {
+        self.legacy_amplitude = amplitude;
+        self.rebuild_legacy();
+    }
+
+    pub fn set_legacy_speed(&mut self, speed: f64) {
+        self.legacy_speed = speed;
+        self.rebuild_legacy();
+    }
+
+    pub fn set_legacy_fixtures(&mut self, addresses: Vec<usize>) {
+        self.legacy_addresses = addresses;
+        self.rebuild_legacy();
     }
 
     pub fn reset_time(&mut self) {
-        self.time_counter = 0.0;
+        self.started_at = Instant::now();
     }
 
-    /// Avance le temps en fonction de la vitesse (0-1)
-    pub fn advance(&mut self, speed: f64) -> (f64, f64) {
-        let step = (0.5 + speed) * 0.15;
-        self.time_counter += step;
-        let theta_1 = self.time_counter;
-        let theta_2 = theta_1 + PI;
-        (theta_1, theta_2)
+    pub fn has_active_motion(&self) -> bool {
+        !self.groups.is_empty()
     }
 
-    /// Calcule les positions (nx1, ny1, nx2, ny2) normalisées [0, 1]
-    pub fn get_positions(
-        &self,
-        mode: MotionMode,
-        theta_1: f64,
-        theta_2: f64,
-    ) -> (f64, f64, f64, f64) {
-        let xc = self.center_x;
-        let yc = self.center_y;
-        let a = self.amplitude;
-
-        let (nx1, ny1, nx2, ny2) = match mode {
-            MotionMode::Streak => {
-                // Figure-8 : X = Xc + A*sin(θ), Y = Yc + A*0.5*sin(2θ)
-                (
-                    xc + a * theta_1.sin(),
-                    yc + a * 0.5 * (2.0 * theta_1).sin(),
-                    xc + a * theta_2.sin(),
-                    yc + a * 0.5 * (2.0 * theta_2).sin(),
-                )
-            }
-            MotionMode::Ellipse => {
-                // Ellipse : X = Xc + A*1.3*cos(θ), Y = Yc + A*0.7*sin(θ)
-                (
-                    xc + a * 1.3 * theta_1.cos(),
-                    yc + a * 0.7 * theta_1.sin(),
-                    xc + a * 1.3 * theta_2.cos(),
-                    yc + a * 0.7 * theta_2.sin(),
-                )
-            }
-            MotionMode::Circle => {
-                // Circle : X = Xc + A*cos(θ), Y = Yc + A*sin(θ)
-                (
-                    xc + a * theta_1.cos(),
-                    yc + a * theta_1.sin(),
-                    xc + a * theta_2.cos(),
-                    yc + a * theta_2.sin(),
-                )
-            }
-        };
-
-        (
-            nx1.clamp(0.0, 1.0),
-            ny1.clamp(0.0, 1.0),
-            nx2.clamp(0.0, 1.0),
-            ny2.clamp(0.0, 1.0),
-        )
+    fn elapsed_secs(&self) -> f64 {
+        self.started_at.elapsed().as_secs_f64()
     }
 
-    pub fn cycle_index(&self, theta_1: f64) -> i64 {
-        (theta_1 / (2.0 * PI)).floor() as i64
+    fn shape_offset(
+        shape: MotionShape,
+        phase: f64,
+        size_pan: f64,
+        size_tilt: f64,
+        custom_points: &[MotionPoint],
+        size_pan_raw: f64,
+        size_tilt_raw: f64,
+    ) -> (f64, f64) {
+        match shape {
+            MotionShape::None => (0.0, 0.0),
+            MotionShape::Circle => (phase.cos() * size_pan, phase.sin() * size_tilt),
+            MotionShape::Eight => (
+                phase.cos() * size_pan,
+                (phase * 2.0).sin() * (size_tilt / 2.0),
+            ),
+            MotionShape::PanSweep => (phase.cos() * size_pan, 0.0),
+            MotionShape::TiltSweep => (0.0, phase.sin() * size_tilt),
+            MotionShape::Custom => {
+                if custom_points.len() < 2 {
+                    return (0.0, 0.0);
+                }
+                let total = custom_points.len() as f64;
+                let t = phase.rem_euclid(total);
+                let i = t.floor() as usize;
+                let next_i = (i + 1) % custom_points.len();
+                let frac = t - i as f64;
+                let p1 = &custom_points[i];
+                let p2 = &custom_points[next_i];
+                (
+                    (p1.x + (p2.x - p1.x) * frac - 127.0) * (size_pan_raw / 128.0),
+                    (p1.y + (p2.y - p1.y) * frac - 127.0) * (size_tilt_raw / 128.0),
+                )
+            }
+        }
+    }
+
+    fn clamp_u8(v: f64) -> u8 {
+        v.round().clamp(0.0, 255.0) as u8
+    }
+
+    /// Applique pan/tilt sur l'univers cible (adresses 1-based → index 0-based).
+    pub fn apply_to_universe(&self, target: &mut [u8]) {
+        let elapsed = self.elapsed_secs();
+
+        for group in &self.groups {
+            let speed = group.speed / 50.0;
+            let size_pan = group.size_pan / 2.0;
+            let size_tilt = group.size_tilt / 2.0;
+
+            for fixture in &group.fixtures {
+                if fixture.address == 0 || fixture.address > target.len() {
+                    continue;
+                }
+
+                let phase =
+                    elapsed * speed + (fixture.index as f64) * (group.fan / 255.0) * PI * 2.0;
+                let (mut pan_off, mut tilt_off) = Self::shape_offset(
+                    group.shape,
+                    phase,
+                    size_pan,
+                    size_tilt,
+                    &group.custom_points,
+                    group.size_pan,
+                    group.size_tilt,
+                );
+
+                if group.invert_180 && fixture.index % 2 != 0 {
+                    pan_off = -pan_off;
+                    tilt_off = -tilt_off;
+                }
+
+                let mut pan = (group.center_pan + pan_off + fixture.offset_pan).clamp(0.0, 255.0);
+                let mut tilt = (group.center_tilt + tilt_off + fixture.offset_tilt).clamp(0.0, 255.0);
+
+                if fixture.invert_pan {
+                    pan = 255.0 - pan;
+                }
+                if fixture.invert_tilt {
+                    tilt = 255.0 - tilt;
+                }
+
+                let idx = fixture.address - 1;
+                if idx + 2 < target.len() {
+                    target[idx] = Self::clamp_u8(pan);
+                    target[idx + 2] = Self::clamp_u8(tilt);
+                }
+            }
+        }
+    }
+
+    /// Aperçu UI : position "groupe" sans fan (index 0).
+    pub fn preview(&self) -> HashMap<String, MotionPreview> {
+        let elapsed = self.elapsed_secs();
+        let mut out = HashMap::new();
+
+        for group in &self.groups {
+            let speed = group.speed / 50.0;
+            let size_pan = group.size_pan / 2.0;
+            let size_tilt = group.size_tilt / 2.0;
+            let phase = elapsed * speed;
+            let (pan_off, tilt_off) = Self::shape_offset(
+                group.shape,
+                phase,
+                size_pan,
+                size_tilt,
+                &group.custom_points,
+                group.size_pan,
+                group.size_tilt,
+            );
+
+            out.insert(
+                group.group_id.clone(),
+                MotionPreview {
+                    pan: Self::clamp_u8(group.center_pan + pan_off),
+                    tilt: Self::clamp_u8(group.center_tilt + tilt_off),
+                },
+            );
+        }
+
+        out
+    }
+}
+
+impl Default for MotionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_manager_has_no_active_motion() {
+        let mm = MotionManager::new();
+        assert!(!mm.has_active_motion());
+    }
+
+    #[test]
+    fn sync_empty_groups_clears_motion() {
+        let mut mm = MotionManager::new();
+        mm.sync_groups(vec![]);
+        assert!(!mm.has_active_motion());
+    }
+
+    #[test]
+    fn circle_shape_produces_preview_in_range() {
+        let mut mm = MotionManager::new();
+        mm.sync_groups(vec![GroupMotionConfig {
+            group_id: "g1".into(),
+            shape: MotionShape::Circle,
+            speed: 128.0,
+            size_pan: 40.0,
+            size_tilt: 40.0,
+            fan: 0.0,
+            invert_180: false,
+            center_pan: 127.0,
+            center_tilt: 127.0,
+            custom_points: vec![],
+            fixtures: vec![MotionFixtureConfig {
+                address: 1,
+                index: 0,
+                invert_pan: false,
+                invert_tilt: false,
+                offset_pan: 0.0,
+                offset_tilt: 0.0,
+            }],
+        }]);
+        assert!(mm.has_active_motion());
+        let preview = mm.preview();
+        let p = preview.get("g1").expect("preview entry");
+        assert!(p.pan <= 255);
+        assert!(p.tilt <= 255);
     }
 }

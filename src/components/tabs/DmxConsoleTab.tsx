@@ -3,16 +3,7 @@ import { GlassCard } from '../ui/GlassCard';
 import { Zap, Lock, Unlock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { ValuePromptModal } from '../ui/ValuePromptModal';
-
-interface Fixture {
-  id: number;
-  name: string;
-  manufacturer: string;
-  model: string;
-  address: number;
-  channels: number;
-  type: string;
-}
+import type { Fixture } from '../../types';
 
 interface DmxConsoleTabProps {
   fixtures: Fixture[];

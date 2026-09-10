@@ -4,13 +4,14 @@ import { Tooltip } from '../../ui/Tooltip';
 import { MasterAmbianceCard } from './MasterAmbianceCard';
 import { AmbianceCard } from './AmbianceCard';
 import { ValuePromptModal } from '../../ui/ValuePromptModal';
+import type { AmbiancePreset, Fixture, Group, GroupIntensity, RgbColor } from '../../../types';
 
 interface AmbianceSectionProps {
-  ambianceGroups: any[];
+  ambianceGroups: Group[];
   linkedGroups: string[];
   toggleGroupLink: (id: string) => void;
-  groupIntensities: Record<string, {dim: number, str: number}>;
-  groupColors: Record<string, {r: number, g: number, b: number}>;
+  groupIntensities: Record<string, GroupIntensity>;
+  groupColors: Record<string, RgbColor>;
   isAmbianceAutoColorActive: boolean;
   isAmbiancePulseActive: boolean;
   activeMacro: string | null;
@@ -21,18 +22,18 @@ interface AmbianceSectionProps {
   onStrobeEdit: (groupId: string | null) => void;
   groupStrobeValues: Record<string, number>;
   onUserColorEdit: (id: string, groupId: string | null) => void;
-  getGroupUserColors: (groupId: string | 'master') => any;
+  getGroupUserColors: (groupId: string | 'master') => Record<string, RgbColor>;
   currentMasterIntensity: number;
   groupAutoColorActive: Record<string, boolean>;
   groupPulseActive: Record<string, boolean>;
-  customPresets: any;
+  customPresets: Record<string, AmbiancePreset>;
   applyAmbiancePreset: (id: string) => void;
   setPresetToSaveId: (id: string | null) => void;
   setIsSavePresetModalOpen: (val: boolean) => void;
   fadeTime: number;
   setFadeTime: (val: number) => void;
   channels: number[];
-  fixtures: any[];
+  fixtures: Fixture[];
 }
 
 export const AmbianceSection = ({

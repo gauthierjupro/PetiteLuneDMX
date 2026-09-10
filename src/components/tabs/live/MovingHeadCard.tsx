@@ -3,9 +3,10 @@ import { Move, Activity, HeartPulse } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 import { Tooltip as UiTooltip } from '../../ui/Tooltip';
+import type { Group } from '../../../types';
 
 interface MovingHeadCardProps {
-  group: any;
+  group: Group;
   onMacro: (fixtureIds: number[], macro: string, groupId: string) => void;
   onIntensityChange: (fixtureIds: number[], type: 'dim' | 'str', val: number, groupId: string) => void;
   onColorChange: (fixtureIds: number[], r: number, g: number, b: number, groupId: string) => void;

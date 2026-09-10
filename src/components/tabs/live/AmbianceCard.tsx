@@ -3,11 +3,12 @@ import { Sun } from 'lucide-react';
 import { IntensityControls } from './IntensityControls';
 import { ColorGrid } from './ColorGrid';
 import { MacroButtons } from './MacroButtons';
+import type { Fixture, Group, GroupIntensity, RgbColor } from '../../../types';
 
 interface AmbianceCardProps {
-  group: any;
-  intensity: { dim: number, str: number };
-  color: { r: number, g: number, b: number };
+  group: Group;
+  intensity: GroupIntensity;
+  color: RgbColor;
   isAutoActive: boolean;
   isPulseActive: boolean;
   onIntensityChange: (type: 'dim' | 'str', val: number) => void;
@@ -15,12 +16,12 @@ interface AmbianceCardProps {
   onMacro: (macro: string) => void;
   onStrobeContextMenu: () => void;
   onUserColorEdit: (id: string) => void;
-  userColors: any;
+  userColors: Record<string, RgbColor>;
   strobeShortcutVal: number;
   currentMasterIntensity: number;
   isLinked?: boolean;
   channels: number[];
-  fixtures: any[];
+  fixtures: Fixture[];
 }
 
 export const AmbianceCard = ({

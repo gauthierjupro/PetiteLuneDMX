@@ -4,6 +4,13 @@ import { Move, Square, FastForward, RotateCcw, Save, Edit2, Link2, Link2Off, Ref
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 import { Tooltip } from '../../ui/Tooltip';
+import type {
+  CustomTrajectory,
+  Fixture,
+  GroupMovement,
+  GroupPosition,
+  MovementPreset,
+} from '../../../types';
 
 interface EffectsModalProps {
   isOpen: boolean;
@@ -11,35 +18,18 @@ interface EffectsModalProps {
   groupId: string;
   groupName: string;
   fixtureIds: number[];
-  fixtures: any[];
-  groupMovements: Record<string, { 
-    shape: any, 
-    speed: number, 
-    sizePan: number, 
-    sizeTilt: number, 
-    fan: number, 
-    invert180: boolean,
-    customPoints?: {x: number, y: number}[] 
-  }>;
-  setGroupMovements: (val: any) => void;
+  fixtures: Fixture[];
+  groupMovements: Record<string, GroupMovement>;
+  setGroupMovements: React.Dispatch<React.SetStateAction<Record<string, GroupMovement>>>;
   groupPan: Record<string, number>;
   groupTilt: Record<string, number>;
   sendMovement: (ids: number[], x: number, y: number, gid: string) => void;
-  groupPositions: Record<string, { x: number, y: number, label: string }[]>;
-  setGroupPositions: (val: any) => void;
-  groupMovementPresets: Record<string, { 
-    shape: string, 
-    speed: number, 
-    sizePan: number, 
-    sizeTilt: number, 
-    fan: number, 
-    invert180: boolean, 
-    label: string,
-    customPoints?: {x: number, y: number}[] 
-  }[]>;
-  setGroupMovementPresets: (val: any) => void;
-  groupCustomTrajectories: Record<string, { id: string, label: string, points: {x: number, y: number}[] }[]>;
-  setGroupCustomTrajectories: (val: any) => void;
+  groupPositions: Record<string, GroupPosition[]>;
+  setGroupPositions: React.Dispatch<React.SetStateAction<Record<string, GroupPosition[]>>>;
+  groupMovementPresets: Record<string, MovementPreset[]>;
+  setGroupMovementPresets: React.Dispatch<React.SetStateAction<Record<string, MovementPreset[]>>>;
+  groupCustomTrajectories: Record<string, CustomTrajectory[]>;
+  setGroupCustomTrajectories: React.Dispatch<React.SetStateAction<Record<string, CustomTrajectory[]>>>;
 }
 
 export const EffectsModal = ({
@@ -389,7 +379,7 @@ export const EffectsModal = ({
               ].map(shape => (
                 <Tooltip key={shape.id} text={shape.tip}>
                   <button
-                    onClick={() => updateConfig({ shape: shape.id })}
+                    onClick={() => updateConfig({ shape: shape.id as import('../../../types').MovementShape })}
                     className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 border ${
                       config.shape === shape.id
                       ? 'bg-blue-500 text-[#05070a] border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.3)]'

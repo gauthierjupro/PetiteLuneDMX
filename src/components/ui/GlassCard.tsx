@@ -1,8 +1,9 @@
 import React from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 interface GlassCardProps {
   title: string;
-  icon?: any;
+  icon?: LucideIcon;
   children: React.ReactNode;
   className?: string;
   extra?: React.ReactNode;
