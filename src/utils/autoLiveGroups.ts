@@ -40,11 +40,15 @@ export function groupHasRgb(group: Group, fixtures: Fixture[]): boolean {
   return fixtures.some((f) => group.fixtureIds.includes(f.id) && f.type === 'RGB');
 }
 
+export function groupHasLaser(group: Group, fixtures: Fixture[]): boolean {
+  return fixtures.some((f) => group.fixtureIds.includes(f.id) && f.type === 'Laser');
+}
+
 export function groupHasEffect(group: Group, fixtures: Fixture[]): boolean {
   return fixtures.some((f) => group.fixtureIds.includes(f.id) && f.type === 'Effect');
 }
 
-/** Pulse : groupes ambiance, sinon PAR / washes (pas lyres seules). */
+/** Pulse : groupes ambiance, sinon PAR seuls, sinon lyres / Dynamo / laser. */
 export function pulseGroupIdsForAutoLive(groups: Group[], fixtures: Fixture[]): string[] {
   const ambiance = groups
     .filter((g) => g.isAmbiance && g.fixtureIds.length > 0)
@@ -52,16 +56,15 @@ export function pulseGroupIdsForAutoLive(groups: Group[], fixtures: Fixture[]): 
   if (ambiance.length > 0) return ambiance;
 
   return groups
-    .filter(
-      (g) =>
-        g.fixtureIds.length > 0 &&
-        groupHasRgb(g, fixtures) &&
-        !groupHasMovingHead(g, fixtures)
-    )
+    .filter((g) => {
+      if (g.fixtureIds.length === 0) return false;
+      if (groupHasRgb(g, fixtures) && !groupHasMovementCapable(g, fixtures)) return true;
+      return groupHasMovementCapable(g, fixtures);
+    })
     .map((g) => g.id);
 }
 
-/** Couleur auto : ambiance, sinon RGB + lyres. */
+/** Couleur auto : ambiance, sinon RGB + lyres / scans + lasers. */
 export function colorGroupIdsForAutoLive(groups: Group[], fixtures: Fixture[]): string[] {
   const ambiance = groups
     .filter((g) => g.isAmbiance && g.fixtureIds.length > 0)
@@ -72,7 +75,9 @@ export function colorGroupIdsForAutoLive(groups: Group[], fixtures: Fixture[]): 
     .filter(
       (g) =>
         g.fixtureIds.length > 0 &&
-        (groupHasRgb(g, fixtures) || groupHasMovingHead(g, fixtures))
+        (groupHasRgb(g, fixtures) ||
+          groupHasMovingHead(g, fixtures) ||
+          groupHasLaser(g, fixtures))
     )
     .map((g) => g.id);
 }

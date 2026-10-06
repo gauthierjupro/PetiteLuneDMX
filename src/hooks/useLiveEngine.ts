@@ -1,7 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Fixture, Group } from '../types';
 import { hslToRgb } from '../utils/colorUtils';
 import { invokeUpdateDmx } from '../utils/dmxInvoke';
+import { loadFixtureProfilesFromStorage } from './useFixtureProfiles';
+import { fixtureChannelIndex } from '../utils/fixtureDmxChannels';
+import { fixtureIsLyreControllable } from '../utils/autoLiveGroups';
+import {
+  applyWookie200RPresetToFixtures,
+  WOOKIE_200R_PRESET_COUNT,
+  wookie200R9FixturesInGroup,
+} from '../utils/cameoWookie200R';
 import {
   buildLiveMotionPayload,
   fetchMotionPreview,
@@ -48,6 +56,8 @@ export function useLiveEngine({
     liveGroupGobos,
     setLiveGroupGobos,
   } = live;
+
+  const lastLaserPresetByGroup = useRef<Record<string, number>>({});
 
   // Sync mouvements → moteur Rust (source de vérité unique)
   useEffect(() => {
@@ -119,6 +129,7 @@ export function useLiveEngine({
             : timerDecay
           : timerDecay;
       const pulseVal = Math.round(255 * pulseNorm);
+      const profiles = loadFixtureProfilesFromStorage();
 
       fixtures.forEach((fixture) => {
         const group = groups.find((g) => g.fixtureIds.includes(fixture.id));
@@ -131,6 +142,12 @@ export function useLiveEngine({
         const finalIntensity = isPulseActive
           ? Math.round(pulseVal * localLimit * masterLimit)
           : Math.round(255 * localLimit * masterLimit);
+
+        const dimCh = fixtureChannelIndex(fixture, 'dimmer', profiles);
+        if (dimCh != null) {
+          void invokeUpdateDmx(dimCh, finalIntensity, reportDmxError);
+          return;
+        }
 
         const start = fixture.address - 1;
         if (fixture.type === 'RGB') {
@@ -162,6 +179,7 @@ export function useLiveEngine({
     );
 
     if (activeGroups.length === 0) {
+      lastLaserPresetByGroup.current = {};
       if (Object.keys(liveGroupColors).length > 0) setLiveGroupColors({});
       return;
     }
@@ -183,16 +201,19 @@ export function useLiveEngine({
         autoRt.enabled && autoRt.autoColor && autoRt.colorUsesHigh
           ? colorCycleMs(autoRt.high)
           : 20;
+      const profiles = loadFixtureProfilesFromStorage();
       const newLiveColors: Record<string, number> = {};
       activeGroups.forEach((groupId) => {
         const group = groups.find((g) => g.id === groupId);
         if (!group) return;
 
-        const hasMovingHead = fixtures.some(
-          (f) => group.fixtureIds.includes(f.id) && f.type === 'Moving Head'
-        );
+        const groupFixtures = group.fixtureIds
+          .map((id) => fixtures.find((fx) => fx.id === id))
+          .filter((f): f is Fixture => f != null);
+        const lyreLike = groupFixtures.filter((f) => fixtureIsLyreControllable(f));
+        const wookieLasers = wookie200R9FixturesInGroup(group.fixtureIds, fixtures);
 
-        if (hasMovingHead) {
+        if (lyreLike.length > 0) {
           const wheelMs =
             autoRt.enabled && autoRt.autoColor && autoRt.colorUsesHigh
               ? 900 + (1 - autoRt.mid) * 800
@@ -201,19 +222,39 @@ export function useLiveEngine({
           const color = wheelColors[colorIndex];
           newLiveColors[groupId] = color.v;
 
-          group.fixtureIds.forEach((id) => {
-            const f = fixtures.find((fx) => fx.id === id);
-            if (f && f.type === 'Moving Head') {
+          lyreLike.forEach((f) => {
+            const colorCh = fixtureChannelIndex(f, 'color', profiles);
+            if (colorCh != null) {
+              void updateDmx(colorCh, color.v);
+            } else if (f.type === 'Moving Head') {
               void updateDmx(f.address + 5, color.v);
             }
           });
+        } else if (wookieLasers.length > 0) {
+          const wheelMs =
+            autoRt.enabled && autoRt.autoColor && autoRt.colorUsesHigh
+              ? 1200 + (1 - autoRt.high) * 600
+              : 2000;
+          const preset =
+            (Math.floor(Date.now() / wheelMs) % WOOKIE_200R_PRESET_COUNT) + 1;
+          newLiveColors[groupId] = preset;
+          if (lastLaserPresetByGroup.current[groupId] !== preset) {
+            applyWookie200RPresetToFixtures(
+              wookieLasers,
+              preset,
+              (ch, val) => {
+                void updateDmx(ch, val);
+              },
+              profiles
+            );
+            lastLaserPresetByGroup.current[groupId] = preset;
+          }
         } else {
           const currentHue = (Date.now() / cycleMs) % 360;
           const { r, g, b } = hslToRgb(currentHue, 100, 50);
 
-          group.fixtureIds.forEach((id) => {
-            const f = fixtures.find((fx) => fx.id === id);
-            if (f && f.type === 'RGB') {
+          groupFixtures.forEach((f) => {
+            if (f.type === 'RGB') {
               void updateDmx(f.address, r);
               void updateDmx(f.address + 1, g);
               void updateDmx(f.address + 2, b);

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Power, Radio, Music2, Sliders } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ChevronDown, Power, Radio, Music2, Sliders } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { WookieLaserPresetGrid } from './WookieLaserPresetGrid';
 import type { Fixture } from '../../../types';
@@ -25,6 +25,15 @@ const MODE_BUTTONS: {
   { id: 'dmx', label: 'DMX', icon: Sliders },
 ];
 
+const GEOMETRY_SLIDERS: { ch: number; label: string }[] = [
+  { ch: 4, label: 'Zoom / taille' },
+  { ch: 5, label: 'Rotation X' },
+  { ch: 6, label: 'Rotation Y' },
+  { ch: 7, label: 'Rotation Z' },
+  { ch: 8, label: 'Position X' },
+  { ch: 9, label: 'Position Y' },
+];
+
 interface WookieLaserLivePanelProps {
   fixtures: Fixture[];
   channels: number[];
@@ -36,12 +45,18 @@ export function WookieLaserLivePanel({
   channels,
   updateDmx,
 }: WookieLaserLivePanelProps) {
-  if (fixtures.length === 0) return null;
-
-  const ref = fixtures[0]!;
-  const ch1 = readWookie200RChannelValue(ref, 1, channels);
+  const [geometryOpen, setGeometryOpen] = useState(false);
+  const ref = fixtures[0];
+  const ch1 = ref ? readWookie200RChannelValue(ref, 1, channels) : 0;
   const activeMode = inferWookie200RGlobalMode(ch1);
-  const activePreset = readWookie200RActivePreset(ref, channels);
+  const isDmx = activeMode === 'dmx';
+  const activePreset = ref ? readWookie200RActivePreset(ref, channels) : null;
+
+  useEffect(() => {
+    if (!isDmx) setGeometryOpen(false);
+  }, [isDmx]);
+
+  if (!ref) return null;
 
   const slider = (ch: number, label: string) => (
     <ControlSlider
@@ -73,7 +88,7 @@ export function WookieLaserLivePanel({
                     updateDmx
                   )
                 }
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[9px] font-black uppercase transition-all active:scale-95 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[9px] font-black uppercase transition-all duration-200 active:scale-95 ${
                   active
                     ? 'border-rose-400 bg-rose-500/20 text-rose-200'
                     : 'border-white/10 bg-slate-900/60 text-slate-400 hover:border-white/20'
@@ -85,26 +100,70 @@ export function WookieLaserLivePanel({
             );
           })}
         </div>
-        <p className="text-[9px] text-slate-600 mt-2">
-          Choisissez <span className="text-rose-400/90 font-bold">DMX</span> pour piloter motifs,
-          zoom et axes ci-dessous.
+        <p
+          className={`text-[9px] mt-2 transition-colors duration-300 ${
+            isDmx ? 'text-slate-500' : 'text-slate-600'
+          }`}
+        >
+          {isDmx ? (
+            <>Motifs et géométrie disponibles ci-dessous.</>
+          ) : (
+            <>
+              Modes internes — activez{' '}
+              <span className="text-rose-400/90 font-bold">DMX</span> pour motifs et réglages
+              géométriques.
+            </>
+          )}
         </p>
       </div>
 
-      <WookieLaserPresetGrid
-        activePreset={activePreset}
-        onSelectPreset={(preset) =>
-          applyWookie200RPresetToFixtures(fixtures, preset, updateDmx)
-        }
-      />
+      <div
+        className={`space-y-4 transition-all duration-300 ease-out ${
+          isDmx
+            ? 'opacity-100 max-h-[2000px] translate-y-0'
+            : 'opacity-0 max-h-0 -translate-y-1 overflow-hidden pointer-events-none'
+        }`}
+        aria-hidden={!isDmx}
+      >
+        <WookieLaserPresetGrid
+          activePreset={activePreset}
+          onSelectPreset={(preset) =>
+            applyWookie200RPresetToFixtures(fixtures, preset, updateDmx)
+          }
+        />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-white/5">
-        {slider(4, 'Zoom / taille')}
-        {slider(5, 'Rotation X')}
-        {slider(6, 'Rotation Y')}
-        {slider(7, 'Rotation Z')}
-        {slider(8, 'Position X')}
-        {slider(9, 'Position Y')}
+        <div className="rounded-xl border border-white/10 bg-slate-900/40 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setGeometryOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-white/5 transition-colors duration-200"
+            aria-expanded={geometryOpen}
+          >
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Réglages géométriques avancés
+            </span>
+            <ChevronDown
+              className={`w-4 h-4 shrink-0 text-slate-500 transition-transform duration-300 ${
+                geometryOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+          <div
+            className={`grid transition-all duration-300 ease-out ${
+              geometryOpen
+                ? 'grid-rows-[1fr] opacity-100'
+                : 'grid-rows-[0fr] opacity-0'
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-3 pb-3 pt-1 border-t border-white/5">
+                {GEOMETRY_SLIDERS.map(({ ch, label }) => (
+                  <React.Fragment key={ch}>{slider(ch, label)}</React.Fragment>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

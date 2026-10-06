@@ -6,7 +6,7 @@ import type {
   GroupCustomMovementSlotLinks,
   GroupQuickMovementSaves,
 } from '../../../types';
-import { Move, Activity, HeartPulse, RefreshCw, Settings2, Sparkles, MapPin, HelpCircle, ChevronDown } from 'lucide-react';
+import { Move, Activity, HeartPulse, RefreshCw, Sparkles, MapPin, HelpCircle, ChevronDown } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 import { Tooltip } from '../../ui/Tooltip';
@@ -113,8 +113,6 @@ interface MovementSectionProps {
   groupStrobeValues: Record<string, number>;
   channels: number[];
   updateDmx: (channel: number, value: number) => void;
-  onOpenCalibration: () => void;
-  onOpenCalibrationForGroup?: (groupId: string, groupName: string, fixtureIds: number[]) => void;
   groupMovements: Record<string, GroupMovement>;
   onOpenEffects: (groupId: string, groupName: string, fixtureIds: number[]) => void;
   groupPositions: Record<string, GroupPosition[]>;
@@ -164,8 +162,6 @@ export const MovementSection = ({
   groupStrobeValues,
   channels,
   updateDmx,
-  onOpenCalibration,
-  onOpenCalibrationForGroup,
   onOpenEffects,
   groupPositions,
   groupCenterPositions,
@@ -314,18 +310,6 @@ export const MovementSection = ({
     />
   );
 
-  const calibrateButton = (
-    <button
-      type="button"
-      onClick={onOpenCalibration}
-      className="flex items-center gap-1.5 shrink-0 rounded-lg border border-white/10 bg-slate-800/70 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-wider text-slate-400 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors active:scale-95"
-      title="Calibration pan/tilt des lyres"
-    >
-      <Settings2 className="w-3 h-3" />
-      Calibrer
-    </button>
-  );
-
   const lyreCountLabel =
     movingHeadGroups.length > 0 ? (
       <span className="font-mono text-blue-300/70 normal-case tracking-normal">
@@ -348,7 +332,6 @@ export const MovementSection = ({
           className={`h-3.5 w-3.5 shrink-0 text-blue-400/80 transition-transform ${lyresExpanded ? 'rotate-180' : ''}`}
         />
       </button>
-      {lyresExpanded ? calibrateButton : null}
     </div>
   ) : null;
 
@@ -363,7 +346,6 @@ export const MovementSection = ({
     }
     return (
       <section className="h-full flex flex-col">
-        <div className="flex justify-end pb-2">{calibrateButton}</div>
         {emptyLyres}
       </section>
     );
@@ -371,9 +353,6 @@ export const MovementSection = ({
 
   const lyresBody = (
     <section className="space-y-3">
-      {!beginnerMode && (
-        <div className="flex justify-end px-0.5">{calibrateButton}</div>
-      )}
       {orphanLyreGroups.length > 0 && (
         <p className="text-[10px] text-amber-400/90 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 leading-relaxed">
           <span className="font-black uppercase tracking-wide">Scans / lyres hors groupe</span>
@@ -404,52 +383,44 @@ export const MovementSection = ({
             <div key={group.id} className="bg-[#111317] border-2 border-blue-500/20 rounded-[2rem] p-5 space-y-5 shadow-[0_0_40px_rgba(0,0,0,0.5),0_0_20px_rgba(59,130,246,0.1)] relative overflow-hidden group/card">
               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[100px] pointer-events-none group-hover/card:bg-blue-500/20 transition-colors duration-500" />
               
-              <div className="flex justify-between items-start gap-3 border-b border-white/10 pb-3 relative z-10">
-                <div className="flex flex-col gap-1.5 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-300">{group.name}</h3>
-                    <LiveMovingHeadKindBadge group={group} fixtures={fixtures} />
-                    {wookieFixtures.length > 0 && (
-                      <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded border border-rose-500/40 bg-rose-500/15 text-rose-300 shrink-0">
-                        Laser
-                      </span>
-                    )}
-                    {onOpenCalibrationForGroup && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onOpenCalibrationForGroup(group.id, group.name, group.fixtureIds)
-                        }
-                        className="flex items-center gap-1 rounded-lg border border-white/10 bg-slate-800/60 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-slate-400 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors"
-                        title="Calibration des lyres de ce groupe"
-                      >
-                        <Settings2 className="w-3 h-3" />
-                        Calibrer
-                      </button>
-                    )}
-                  </div>
-                  <LiveGroupStatusBadges badges={statusBadges} />
-                </div>
-                <div className="flex items-center gap-4 shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div 
-                       className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-lg transition-all duration-300"
-                       style={{ 
-                         backgroundColor: `rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`,
-                         boxShadow: `0 0 10px rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`
-                       }}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-white/10 pb-3 relative z-10">
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-300 shrink-0">
+                  {group.name}
+                </h3>
+                <LiveMovingHeadKindBadge group={group} fixtures={fixtures} />
+                {wookieFixtures.length > 0 && (
+                  <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded border border-rose-500/40 bg-rose-500/15 text-rose-300 shrink-0">
+                    Laser
+                  </span>
+                )}
+                <LiveGroupStatusBadges badges={statusBadges} />
+                <div className="flex items-center gap-2 shrink-0 ml-auto">
+                  <div
+                    className="w-3 h-3 rounded-full border border-white/20 shadow-lg transition-all duration-300"
+                    style={{
+                      backgroundColor: `rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`,
+                      boxShadow: `0 0 10px rgb(${liveColor.r}, ${liveColor.g}, ${liveColor.b})`,
+                    }}
+                  />
+                  <div className="w-16 sm:w-20 h-1 bg-slate-900 rounded-full overflow-hidden relative shadow-inner">
+                    <div
+                      className="absolute left-0 h-full bg-blue-400 shadow-[0_0_10px_#60a5fa] transition-all duration-75"
+                      style={{ width: `${liveHeight}%` }}
                     />
-                    <div className="w-20 h-1 bg-slate-900 rounded-full overflow-hidden relative shadow-inner">
-                       <div 
-                         className="absolute left-0 h-full bg-blue-400 shadow-[0_0_10px_#60a5fa] transition-all duration-75"
-                         style={{ width: `${liveHeight}%` }}
-                       />
-                    </div>
-                    {/* Lecture PAN/TILT à droite du VU-mètre */}
-                    <div className="flex items-center gap-2 bg-black/40 px-2.5 py-1 rounded border border-white/5 shadow-inner ml-1">
-                      <span className="text-[10px] font-mono font-black text-cyan-400">P:{Math.round(liveGroupPositions[group.id]?.pan ?? groupPan[group.id] ?? 127)}</span>
-                      <span className="text-[10px] font-mono font-black text-indigo-400">T:{Math.round(liveGroupPositions[group.id]?.tilt ?? groupTilt[group.id] ?? 127)}</span>
-                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-black/40 px-2 py-0.5 rounded border border-white/5 shadow-inner font-mono tabular-nums">
+                    <span className="text-[10px] font-black text-cyan-400 inline-flex min-w-[2.85rem] justify-end">
+                      P:
+                      {Math.round(
+                        liveGroupPositions[group.id]?.pan ?? groupPan[group.id] ?? 127
+                      )}
+                    </span>
+                    <span className="text-[10px] font-black text-indigo-400 inline-flex min-w-[2.85rem] justify-end">
+                      T:
+                      {Math.round(
+                        liveGroupPositions[group.id]?.tilt ?? groupTilt[group.id] ?? 127
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -569,44 +540,46 @@ export const MovementSection = ({
                     </div>
                   </div>
 
-                  <div className="space-y-3 shrink-0">
-                    <div className="flex items-center justify-between border-l-2 border-indigo-500 pl-2">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Modes</p>
+                  <div className="space-y-1 shrink-0 min-w-[10.75rem] flex-1 basis-[11rem] max-w-[13rem]">
+                    <div className="flex items-center border-l-2 border-indigo-500 pl-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        Modes
+                      </p>
                       <Tooltip
                         text={`${LIVE_MACRO_HELP.U1.tooltip} · ${LIVE_MACRO_HELP.U3.tooltip} · ${LIVE_MACRO_HELP.U6.tooltip}`}
                       >
-                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-indigo-400 cursor-help transition-colors ml-2" />
+                        <HelpCircle className="w-3 h-3 text-slate-600 hover:text-indigo-400 cursor-help transition-colors ml-1.5" />
                       </Tooltip>
                     </div>
-                    <div className="flex flex-col gap-2 pt-1">
-                      <Tooltip text={LIVE_MACRO_HELP.U1.tooltip}>
+                    <div className="grid grid-cols-3 gap-1 w-full">
+                      <Tooltip text={LIVE_MACRO_HELP.U1.tooltip} className="w-full min-w-0">
                         <button
                           type="button"
                           onClick={() => handleMacro(group.fixtureIds, 'U1', group.id)}
-                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoColorActive[group.id] ? 'bg-cyan-500 text-[#05070a] border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400'}`}
+                          className={`w-full h-8 px-0.5 border rounded-md text-[7px] font-black uppercase leading-none transition-all flex flex-row items-center justify-center gap-0.5 active:scale-95 duration-75 ${groupAutoColorActive[group.id] ? 'bg-cyan-500 text-[#05070a] border-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.35)]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400'}`}
                         >
-                          <Activity className={`w-3 h-3 ${groupAutoColorActive[group.id] ? 'animate-pulse' : ''}`} />
-                          {LIVE_MACRO_HELP.U1.shortLabel}
+                          <Activity className={`w-2.5 h-2.5 shrink-0 ${groupAutoColorActive[group.id] ? 'animate-pulse' : ''}`} />
+                          <span className="truncate">{LIVE_MACRO_HELP.U1.shortLabel}</span>
                         </button>
                       </Tooltip>
-                      <Tooltip text={LIVE_MACRO_HELP.U3.tooltip}>
+                      <Tooltip text={LIVE_MACRO_HELP.U3.tooltip} className="w-full min-w-0">
                         <button
                           type="button"
                           onClick={() => handleMacro(group.fixtureIds, 'U3', group.id)}
-                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupPulseActive[group.id] ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)]' : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'}`}
+                          className={`w-full h-8 px-0.5 border rounded-md text-[7px] font-black uppercase leading-none transition-all flex flex-row items-center justify-center gap-0.5 active:scale-95 duration-75 ${groupPulseActive[group.id] ? 'bg-amber-500 text-[#05070a] border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.35)]' : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'}`}
                         >
-                          <HeartPulse className={`w-3 h-3 ${groupPulseActive[group.id] ? 'animate-bounce' : ''}`} />
-                          {LIVE_MACRO_HELP.U3.shortLabel}
+                          <HeartPulse className={`w-2.5 h-2.5 shrink-0 ${groupPulseActive[group.id] ? 'animate-bounce' : ''}`} />
+                          <span className="truncate">{LIVE_MACRO_HELP.U3.shortLabel}</span>
                         </button>
                       </Tooltip>
-                      <Tooltip text={LIVE_MACRO_HELP.U6.tooltip}>
+                      <Tooltip text={LIVE_MACRO_HELP.U6.tooltip} className="w-full min-w-0">
                         <button
                           type="button"
                           onClick={() => handleMacro(group.fixtureIds, 'U6', group.id)}
-                          className={`w-24 h-10 border rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-2 active:scale-90 duration-75 ${groupAutoGoboActive[group.id] ? 'bg-indigo-500 text-[#05070a] border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]' : 'bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-400'}`}
+                          className={`w-full h-8 px-0.5 border rounded-md text-[7px] font-black uppercase leading-none transition-all flex flex-row items-center justify-center gap-0.5 active:scale-95 duration-75 ${groupAutoGoboActive[group.id] ? 'bg-indigo-500 text-[#05070a] border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.35)]' : 'bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-400'}`}
                         >
-                          <RefreshCw className={`w-3 h-3 ${groupAutoGoboActive[group.id] ? 'animate-spin' : ''}`} />
-                          {LIVE_MACRO_HELP.U6.shortLabel}
+                          <RefreshCw className={`w-2.5 h-2.5 shrink-0 ${groupAutoGoboActive[group.id] ? 'animate-spin' : ''}`} />
+                          <span className="truncate">{LIVE_MACRO_HELP.U6.shortLabel}</span>
                         </button>
                       </Tooltip>
                     </div>

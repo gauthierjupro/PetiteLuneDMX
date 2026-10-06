@@ -20,7 +20,7 @@ export function LiveMovingHeadKindBadge({
   fixtures: Fixture[];
 }) {
   const kind: MovingHeadGroupKind = movingHeadGroupKind(group, fixtures);
-  if (kind === 'generic') return null;
+  if (kind === 'generic' || kind === 'lyre' || kind === 'scan_dynamo') return null;
 
   const meta = MOVING_HEAD_KIND_BADGE[kind];
   return (

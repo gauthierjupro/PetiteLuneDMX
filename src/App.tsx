@@ -37,7 +37,7 @@ import { loadAutoLiveState } from './utils/autoLiveConfig';
 import { AutoLiveBackgroundBadge } from './components/live/AutoLiveBackgroundBadge';
 import type { AutoLiveState } from './types/autoLive';
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 
 const TABS = [
   { id: 'live' as const, label: 'Live', icon: Zap },

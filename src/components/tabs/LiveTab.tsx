@@ -660,16 +660,6 @@ export const LiveTab = (props: LiveTabProps) => {
       channels={channels}
       updateDmx={updateDmx}
       groupMovements={groupMovements}
-      onOpenCalibration={() => {
-        setCalibrationFixtureFilter(null);
-        setCalibrationGroupName(null);
-        setIsCalibrationOpen(true);
-      }}
-      onOpenCalibrationForGroup={(_groupId, groupName, fixtureIds) => {
-        setCalibrationFixtureFilter(fixtureIds);
-        setCalibrationGroupName(groupName);
-        setIsCalibrationOpen(true);
-      }}
       onOpenEffects={(groupId, groupName, fixtureIds) => {
         setEffectsModalState({
           isOpen: true,
@@ -832,6 +822,11 @@ export const LiveTab = (props: LiveTabProps) => {
           setGroupQuickMovementSaves={setGroupQuickMovementSaves}
           groupCustomMovementSlotLinks={groupCustomMovementSlotLinks}
           setGroupCustomMovementSlotLinks={setGroupCustomMovementSlotLinks}
+          onOpenCalibration={() => {
+            setCalibrationFixtureFilter(effectsModalState.fixtureIds);
+            setCalibrationGroupName(effectsModalState.groupName);
+            setIsCalibrationOpen(true);
+          }}
         />
 
       <StrobeModal 

@@ -15,7 +15,7 @@ export function LiveGroupStatusBadges({ badges }: { badges: LyreStatusBadge[] })
   if (badges.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="inline-flex flex-wrap items-center gap-1.5">
       {badges.map((b) => (
         <span
           key={b.id}

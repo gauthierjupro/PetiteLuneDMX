@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal } from '../../ui/Modal';
 import { ConfirmModal } from '../../ui/ConfirmModal';
 import { ValuePromptModal } from '../../ui/ValuePromptModal';
-import { Move, Square, FlipHorizontal2, Save, Edit2, Link2, Link2Off, RefreshCcw, Plus, Trash2, Play, HelpCircle } from 'lucide-react';
+import { Move, Square, FlipHorizontal2, Save, Edit2, Link2, Link2Off, RefreshCcw, Plus, Trash2, Play, HelpCircle, Settings2 } from 'lucide-react';
 import { ControlSlider } from '../../ui/ControlSlider';
 import { XYPad } from '../../ui/XYPad';
 import { Tooltip } from '../../ui/Tooltip';
@@ -107,6 +107,8 @@ interface EffectsModalProps {
   setGroupCustomMovementSlotLinks: React.Dispatch<
     React.SetStateAction<GroupCustomMovementSlotLinks>
   >;
+  /** Ouvre la calibration filtrée sur le groupe de cette modale. */
+  onOpenCalibration?: () => void;
 }
 
 export const EffectsModal = ({
@@ -139,6 +141,7 @@ export const EffectsModal = ({
   setGroupCustomMovementSlotLinks,
   channels,
   fixtureCalibration,
+  onOpenCalibration,
 }: EffectsModalProps) => {
   const config = groupMovements[groupId] || { shape: 'none', speed: 128, sizePan: 64, sizeTilt: 64, fan: 0, invert180: false };
   const centerX = groupPan[groupId] ?? 127;
@@ -260,6 +263,18 @@ export const EffectsModal = ({
   };
 
   const movingHeadCount = movingHeadIds.length;
+
+  const calibrateButton = onOpenCalibration ? (
+    <button
+      type="button"
+      onClick={onOpenCalibration}
+      className="flex items-center gap-1.5 shrink-0 rounded-lg border border-white/10 bg-slate-800/70 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors active:scale-95"
+      title="Calibration pan/tilt des lyres de ce groupe"
+    >
+      <Settings2 className="w-3.5 h-3.5" />
+      Calibrer
+    </button>
+  ) : null;
 
   const motionCenters = React.useMemo(
     () =>
@@ -716,11 +731,12 @@ export const EffectsModal = ({
             }))
           }
         />
-        <div className="pt-4 flex justify-end">
+        <div className="pt-4 flex flex-wrap items-center justify-between gap-2">
+          {calibrateButton}
           <button
             type="button"
             onClick={onClose}
-            className="px-8 py-2.5 bg-slate-800 hover:bg-slate-700 text-white border border-white/5 rounded-xl text-[10px] font-black uppercase tracking-widest"
+            className="px-8 py-2.5 bg-slate-800 hover:bg-slate-700 text-white border border-white/5 rounded-xl text-[10px] font-black uppercase tracking-widest ml-auto"
           >
             Fermer
           </button>
@@ -743,16 +759,19 @@ export const EffectsModal = ({
         className="relative space-y-6 p-2"
         onClick={() => setTrajMenu(null)}
       >
-        <button
-          type="button"
-          onClick={() => {
-            localStorage.removeItem(MOVEMENT_ADVANCED_KEY);
-            setAdvancedMode(false);
-          }}
-          className="text-[10px] font-black uppercase text-slate-500 hover:text-cyan-400 transition-colors"
-        >
-          ← Mode simple
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem(MOVEMENT_ADVANCED_KEY);
+              setAdvancedMode(false);
+            }}
+            className="text-[10px] font-black uppercase text-slate-500 hover:text-cyan-400 transition-colors"
+          >
+            ← Mode simple
+          </button>
+          {calibrateButton}
+        </div>
         {/* Menu Contextuel pour la bibliothèque */}
         {trajMenu && (
           <div 

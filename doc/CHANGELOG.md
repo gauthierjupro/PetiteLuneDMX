@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.10.0 — 2026-10-06
+
+Auto Live étendu aux scans Dynamo et lasers, polish UI Live.
+
+### Auto Live
+- Pulse et couleur auto sur groupes **Dynamo** (dimmer / roue via profil DMX)
+- Couleur auto **WOOKIE 200 R** : mode DMX + cycle des 32 presets
+
+### Live — UI
+- Cartes lyres : en-têtes compacts, badges type masqués si redondants
+- Modes Auto couleur / Pulse / gobo en grille uniforme
+- WOOKIE : réglages géométriques CH4–9 en accordéon (mode DMX)
+- Calibrage déplacé dans la modale formes ; confirmation mémorisation positions
+
 ## 1.9.0 — 2026-10-06
 
 Release Live laser, groupes Spéciaux et fiabilisation des positions mémorisées.
