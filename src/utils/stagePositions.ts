@@ -66,3 +66,7 @@ export function persistStagePositions(positions: StageFixturePosition[]): void {
 export function sameFixtureId(a: number | string, b: number | string): boolean {
   return Number(a) === Number(b);
 }
+
+export function isStageFixtureVisible(pos: StageFixturePosition): boolean {
+  return pos.visible !== false;
+}

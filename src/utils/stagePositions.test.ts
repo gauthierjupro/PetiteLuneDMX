@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { mergeStagePositions, generateDefaultPositions } from './stagePositions';
+import {
+  mergeStagePositions,
+  generateDefaultPositions,
+  isStageFixtureVisible,
+} from './stagePositions';
 import type { Fixture } from '../types';
 
 const fixtures: Fixture[] = [
@@ -19,5 +23,12 @@ describe('mergeStagePositions', () => {
   it('génère des défauts si saved null', () => {
     const merged = mergeStagePositions(fixtures, null);
     expect(merged).toEqual(generateDefaultPositions(fixtures));
+  });
+});
+
+describe('isStageFixtureVisible', () => {
+  it('visible par défaut, masqué si visible === false', () => {
+    expect(isStageFixtureVisible({ id: 1, x: 0, y: 0 })).toBe(true);
+    expect(isStageFixtureVisible({ id: 1, x: 0, y: 0, visible: false })).toBe(false);
   });
 });

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Zap, Square, Music, Activity, Volume2 } from 'lucide-react';
+import { Zap, Square, Music, Activity, Volume2, Power } from 'lucide-react';
 import { Tooltip } from '../../ui/Tooltip';
 import { invoke } from '@tauri-apps/api/tauri';
 import { AudioStats } from '../../../hooks/useAudioAnalyzer';
 import { ValuePromptModal } from '../../ui/ValuePromptModal';
+import { LiveManualShortcutsHelp } from './LiveManualShortcutsHelp';
 
 interface MasterGlobalSectionProps {
   masterVal: number;
@@ -20,6 +21,9 @@ interface MasterGlobalSectionProps {
   selectedAudioDeviceId: string | null;
   setSelectedAudioDeviceId: (id: string | null) => void;
   audioStats: AudioStats;
+  onBlackout?: () => void;
+  liveBeginner?: boolean;
+  showKeyboardShortcuts?: boolean;
 }
 
 export const MasterGlobalSection = ({
@@ -36,8 +40,12 @@ export const MasterGlobalSection = ({
   audioDevices,
   selectedAudioDeviceId,
   setSelectedAudioDeviceId,
-  audioStats
+  audioStats,
+  onBlackout,
+  liveBeginner = false,
+  showKeyboardShortcuts = false,
 }: MasterGlobalSectionProps) => {
+  const [rhythmOpen, setRhythmOpen] = useState(false);
   const [promptData, setPromptData] = useState<{
     isOpen: boolean;
     label: string;
@@ -84,20 +92,46 @@ export const MasterGlobalSection = ({
 
   return (
     <>
-      <section className="bg-gradient-to-r from-yellow-500/10 via-yellow-500/5 to-[#111317]/50 border border-yellow-500/30 rounded-3xl p-3 shadow-2xl relative overflow-hidden h-24 flex items-center">
+      <section className="bg-gradient-to-r from-yellow-500/10 via-yellow-500/5 to-[#111317]/50 border border-yellow-500/30 rounded-3xl p-3 shadow-2xl relative overflow-visible min-h-[6.5rem] flex items-center z-[20]">
         <div className="flex items-center gap-6 w-full h-full">
           {/* SECTION 1 : MASTER TOTAL */}
           <div className="flex flex-col gap-1.5 min-w-[160px] border-r border-white/10 pr-6 h-full justify-center">
             <h2 className="text-xs font-black text-yellow-500 uppercase tracking-widest flex items-center gap-2">
               <Zap className="w-3.5 h-3.5 fill-yellow-500" /> MASTER
             </h2>
-            <div className="flex gap-1.5">
-               <Tooltip text="Blackout">
-                 <button onClick={() => handleGlobalAction('dimmer', 0)} className="flex-1 py-2.5 px-4 bg-slate-800 hover:bg-rose-600 text-white rounded-lg text-xs font-black uppercase transition-all active:scale-95 shadow-lg">0%</button>
-               </Tooltip>
-               <Tooltip text="Full">
-                 <button onClick={() => handleGlobalAction('dimmer', 255)} className="flex-1 py-2.5 px-4 bg-yellow-500 hover:bg-yellow-400 text-[#05070a] rounded-lg text-xs font-black uppercase transition-all active:scale-95 shadow-lg">100%</button>
-               </Tooltip>
+            <div className="flex flex-col gap-1.5">
+              {onBlackout && (
+                <Tooltip text="Blackout DMX complet (raccourci B)">
+                  <button
+                    type="button"
+                    onClick={() => (onBlackout ? onBlackout() : handleGlobalAction('dimmer', 0))}
+                    className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-500 border-2 border-rose-400 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-[0_0_20px_rgba(244,63,94,0.35)] flex items-center justify-center gap-1.5"
+                  >
+                    <Power className="w-3.5 h-3.5" />
+                    Blackout
+                  </button>
+                </Tooltip>
+              )}
+              <div className="flex gap-1.5">
+                <Tooltip text="Master à 0 %">
+                  <button
+                    type="button"
+                    onClick={() => handleGlobalAction('dimmer', 0)}
+                    className="flex-1 py-2 px-2 bg-slate-800 hover:bg-rose-600/80 text-white rounded-lg text-[10px] font-black uppercase transition-all active:scale-95"
+                  >
+                    0%
+                  </button>
+                </Tooltip>
+                <Tooltip text="Master à 100 %">
+                  <button
+                    type="button"
+                    onClick={() => handleGlobalAction('dimmer', 255)}
+                    className="flex-1 py-2 px-2 bg-yellow-500 hover:bg-yellow-400 text-[#05070a] rounded-lg text-[10px] font-black uppercase transition-all active:scale-95 shadow-lg"
+                  >
+                    100%
+                  </button>
+                </Tooltip>
+              </div>
             </div>
           </div>
 
@@ -115,24 +149,86 @@ export const MasterGlobalSection = ({
               />
             </div>
 
-            <div className="flex flex-col gap-1.5" onContextMenu={(e) => { e.preventDefault(); handleValuePrompt('Strobe Global', globalStrobe, 0, 255, (v) => handleGlobalAction('strobe', v)); }}>
-              <div className="flex justify-between items-center px-1">
-                <span className="text-[11px] font-black text-emerald-500/60 uppercase">Strobe</span>
-                <span className="text-[12px] font-mono font-black text-emerald-500">{Math.round((globalStrobe/255)*100)}%</span>
+            {!liveBeginner && (
+              <div className="flex flex-col gap-1.5" onContextMenu={(e) => { e.preventDefault(); handleValuePrompt('Strobe Global', globalStrobe, 0, 255, (v) => handleGlobalAction('strobe', v)); }}>
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[11px] font-black text-emerald-500/60 uppercase">Strobe</span>
+                  <span className="text-[12px] font-mono font-black text-emerald-500">{Math.round((globalStrobe/255)*100)}%</span>
+                </div>
+                <input 
+                  type="range" min="0" max="255" value={globalStrobe} 
+                  onChange={(e) => handleGlobalAction('strobe', parseInt(e.target.value))}
+                  className="w-28 h-1 bg-slate-800 accent-emerald-500 rounded-full cursor-pointer"
+                />
               </div>
-              <input 
-                type="range" min="0" max="255" value={globalStrobe} 
-                onChange={(e) => handleGlobalAction('strobe', parseInt(e.target.value))}
-                className="w-28 h-1 bg-slate-800 accent-emerald-500 rounded-full cursor-pointer"
-              />
-            </div>
+            )}
           </div>
 
-          <p className="text-[8px] font-bold uppercase text-slate-600 tracking-wider px-2">
-            B blackout · T tap · ↵ GO cue
-          </p>
-
           {/* SECTION 3 : RYTHME / AUDIO (Intégration Horizontale) */}
+          {liveBeginner ? (
+            <div className="flex flex-col justify-center px-4 border-r border-white/10 h-full flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={() => setRhythmOpen((v) => !v)}
+                className="text-[10px] font-black uppercase tracking-widest text-emerald-400/90 hover:text-emerald-300 text-left"
+              >
+                Options rythme {rhythmOpen ? '▴' : '▾'}
+              </button>
+              {rhythmOpen && (
+                <div className="mt-2 flex flex-wrap items-center gap-4 max-w-full overflow-x-auto">
+                  <div className="flex flex-col gap-1.5 min-w-[100px]" onContextMenu={(e) => { e.preventDefault(); handleValuePrompt('BPM', bpm, 40, 220, (v) => { setBpm(v); invoke('set_bpm', { bpm: v }); }); }}>
+                    <h3 className="text-[10px] font-black text-emerald-400 uppercase flex items-center gap-2">
+                      <Music className="w-3 h-3" /> BPM
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-black text-emerald-500">{bpm}</span>
+                      <input
+                        type="range"
+                        min="40"
+                        max="220"
+                        value={bpm}
+                        disabled={isAudioActive}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value);
+                          setBpm(v);
+                          invoke('set_bpm', { bpm: v });
+                        }}
+                        className="w-20 h-1 accent-emerald-500 bg-slate-800 rounded-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsAudioActive(!isAudioActive)}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg ${isAudioActive ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-500 border border-white/5'}`}
+                    >
+                      Audio
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTap}
+                      className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-[10px] font-black uppercase border border-white/5"
+                    >
+                      Tap
+                    </button>
+                  </div>
+                  <select
+                    value={selectedAudioDeviceId || ''}
+                    onChange={(e) => setSelectedAudioDeviceId(e.target.value || null)}
+                    className="bg-slate-900/80 border border-white/5 rounded px-2 py-1 text-[10px] font-bold text-slate-400 max-w-[140px]"
+                  >
+                    <option value="">Micro défaut</option>
+                    {audioDevices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Entrée ${device.deviceId.slice(0, 5)}…`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="flex items-center gap-6 px-6 border-r border-white/10 h-full flex-1">
             <div className="flex flex-col gap-1.5 min-w-[110px]" onContextMenu={(e) => { e.preventDefault(); handleValuePrompt('BPM', bpm, 40, 220, (v) => { setBpm(v); invoke('set_bpm', { bpm: v }); }); }}>
               <h3 className="text-xs font-black text-emerald-400 uppercase flex items-center gap-2">
@@ -228,8 +324,10 @@ export const MasterGlobalSection = ({
               )}
             </div>
           </div>
+          )}
 
           {/* SECTION 4 : ACTIONS FINALES */}
+          {!liveBeginner && (
           <div className="flex items-center gap-3 pl-6 h-full">
             <Tooltip text="Break : Stop immédiat">
               <button 
@@ -240,6 +338,17 @@ export const MasterGlobalSection = ({
               </button>
             </Tooltip>
           </div>
+          )}
+
+          {showKeyboardShortcuts && (
+            <div className="ml-auto pl-4 h-full flex items-center shrink-0">
+              <LiveManualShortcutsHelp
+                variant="compact"
+                defaultOpen={false}
+                beginnerMode={liveBeginner}
+              />
+            </div>
+          )}
         </div>
       </section>
 

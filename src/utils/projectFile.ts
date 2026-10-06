@@ -14,6 +14,8 @@ export const PROJECT_STORAGE_KEYS = [
   // Live moteur
   'dmx_group_movements',
   'dmx_custom_trajectories',
+  'dmx_group_custom_movement_slots',
+  'dmx_group_quick_movement_saves',
   'dmx_group_pan',
   'dmx_group_tilt',
   'dmx_group_auto_color',
@@ -22,6 +24,8 @@ export const PROJECT_STORAGE_KEYS = [
   'dmx_group_colors',
   'dmx_group_gobos',
   'dmx_group_positions',
+  'dmx_group_center_position',
+  'dmx_group_position_memory_mode',
   'dmx_group_movement_presets',
   'dmx_fixture_calibration',
   'dmx_group_pulse',
@@ -35,9 +39,13 @@ export const PROJECT_STORAGE_KEYS = [
   'dmx_custom_ambiance_presets',
   'dmx_cue_list',
   'dmx_audio_device_id',
+  'dmx_auto_live',
   // Scène
   'stage_positions',
   'stage_decor_settings',
+  'stage_plan_background',
+  'stage_landmarks',
+  'stage_scene_elements',
   // Système
   'dmx_blackout_on_disconnect',
 ] as const;

@@ -83,6 +83,7 @@ fn main() {
             dmx_engine::open_pdf,
             dmx_engine::open_pdf_folder,
             file_io::save_text_file,
+            file_io::save_binary_file,
             file_io::load_text_file,
         ])
         .run(tauri::generate_context!())

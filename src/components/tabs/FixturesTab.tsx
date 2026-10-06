@@ -1,8 +1,11 @@
 import React from 'react';
 import { GlassCard } from '../ui/GlassCard';
 import { ControlSlider } from '../ui/ControlSlider';
-import { Layout, Settings as SettingsIcon, Sun, Move, Zap, Wind } from 'lucide-react';
+import { Layout, Settings as SettingsIcon } from 'lucide-react';
 import type { Fixture } from '../../types';
+import { useFixtureProfiles } from '../../hooks/useFixtureProfiles';
+import { FixtureProfilePhoto } from '../ui/FixtureProfilePhoto';
+import { resolveFixtureProfileImageUrl } from '../../utils/fixtureProfileImage';
 
 interface FixturesTabProps {
   fixtures: Fixture[];
@@ -23,6 +26,7 @@ export const FixturesTab = ({
   updateDmx,
   onIdentify
 }: FixturesTabProps) => {
+  const profiles = useFixtureProfiles();
   const current = getFixtureById(selectedFixture);
 
   const getSliderColor = (label: string) => {
@@ -30,11 +34,11 @@ export const FixturesTab = ({
     if (l.includes('rouge') || l.includes('red')) return 'bg-red-500';
     if (l.includes('vert') || l.includes('green')) return 'bg-green-500';
     if (l.includes('bleu') || l.includes('blue')) return 'bg-blue-500';
-    if (l.includes('blanc') || l.includes('white')) return 'bg-slate-100';
+    if (l.includes('blanc') || l.includes('white')) return 'bg-zinc-400';
     if (l.includes('ambre') || l.includes('amber')) return 'bg-orange-400';
     if (l.includes('uv')) return 'bg-purple-600';
     if (l.includes('pan') || l.includes('tilt')) return 'bg-cyan-500';
-    if (l.includes('dimmer') || l.includes('intensité')) return 'bg-white/80';
+    if (l.includes('dimmer') || l.includes('intensité')) return 'bg-yellow-500';
     return undefined;
   };
 
@@ -59,23 +63,25 @@ export const FixturesTab = ({
   return (
     <div className="grid grid-cols-12 gap-8 h-[calc(100vh-200px)]">
       <div className="col-span-9 flex flex-col h-full">
-        <GlassCard title="Patch & Sélection" icon={Layout} className="flex-1 overflow-hidden">
+        <GlassCard title="Sélection appareil" icon={Layout} className="flex-1 overflow-hidden">
           <div className="grid grid-cols-8 gap-4 overflow-y-auto pr-2 custom-scrollbar h-full">
             {fixtures.map((fixture) => (
               <div 
                 key={fixture.id} 
                 onClick={() => setSelectedFixture(fixture.id)}
-                className={`aspect-square border rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all group ${
+                className={`aspect-square border rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all group p-1.5 ${
                   selectedFixture === fixture.id 
                     ? 'bg-cyan-500/20 border-cyan-500/50' 
                     : 'bg-slate-800 border-white/5 hover:border-cyan-500/50 hover:bg-cyan-500/5'
                 }`}
               >
                 <span className={`text-[10px] font-mono ${selectedFixture === fixture.id ? 'text-cyan-400' : 'text-slate-500'}`}>#{fixture.id}</span>
-                {fixture.type === 'RGB' && <Sun className={`w-4 h-4 ${selectedFixture === fixture.id ? 'text-cyan-400' : 'text-slate-600 group-hover:text-cyan-400'}`} />}
-                {fixture.type === 'Moving Head' && <Move className={`w-4 h-4 ${selectedFixture === fixture.id ? 'text-cyan-400' : 'text-slate-600 group-hover:text-cyan-400'}`} />}
-                {fixture.type === 'Laser' && <Zap className={`w-4 h-4 ${selectedFixture === fixture.id ? 'text-cyan-400' : 'text-slate-600 group-hover:text-cyan-400'}`} />}
-                {fixture.type === 'Effect' && <Wind className={`w-4 h-4 ${selectedFixture === fixture.id ? 'text-cyan-400' : 'text-slate-600 group-hover:text-cyan-400'}`} />}
+                <FixtureProfilePhoto
+                  src={resolveFixtureProfileImageUrl(fixture, profiles)}
+                  alt={fixture.name}
+                  size="sm"
+                  className="w-9 h-9"
+                />
                 <span className={`text-[8px] font-bold uppercase text-center px-1 truncate w-full ${selectedFixture === fixture.id ? 'text-cyan-400' : 'text-slate-400'}`}>
                   {fixture.name}
                 </span>
@@ -89,10 +95,17 @@ export const FixturesTab = ({
         <GlassCard title="Propriétés" icon={SettingsIcon} className="flex-1 overflow-hidden flex flex-col">
           {selectedFixture !== null && current ? (
             <div className="flex flex-col h-full">
-              <div className="pb-4 border-b border-white/5 shrink-0">
+              <div className="pb-4 border-b border-white/5 shrink-0 flex gap-3 items-start">
+                <FixtureProfilePhoto
+                  src={resolveFixtureProfileImageUrl(current, profiles)}
+                  alt={current.name}
+                  size="md"
+                />
+                <div className="min-w-0">
                 <h3 className="text-xs font-bold text-cyan-400 uppercase mb-1 truncate">{current.name}</h3>
                 <p className="text-[10px] text-slate-500 truncate">{current.manufacturer} {current.model}</p>
                 <p className="text-[10px] text-slate-500">DMX: {current.address} ({current.channels} CH)</p>
+                </div>
               </div>
 
               <div className="flex-1 overflow-hidden pt-4">

@@ -24,6 +24,7 @@ interface MasterAmbianceCardProps {
   fixtures: Fixture[];
   groups: Group[];
   linkedGroups: string[];
+  beginnerMode?: boolean;
 }
 
 export const MasterAmbianceCard = ({

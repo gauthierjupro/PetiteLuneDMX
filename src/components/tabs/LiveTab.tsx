@@ -1,15 +1,44 @@
-﻿import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { useLiveLogic } from '../../hooks/useLiveLogic';
+import { useAutoLive } from '../../hooks/live/useAutoLive';
+import type { AutoLiveOptions, AutoLivePresetId, AutoLiveState } from '../../types/autoLive';
+import { getAutoLivePreset } from '../../utils/autoLivePresets';
+import {
+  buildOneClickPartyEnergyLooks,
+  oneClickPartySuggestedMaster,
+  pickOneClickPartyPresetId,
+} from '../../utils/autoLiveOneClickParty';
+import { mergeBeginnerFactoryPresets } from '../../utils/liveBeginnerFactoryPresets';
 import { useCueList } from '../../hooks/useCueList';
 import { CueListSection } from './live/CueListSection';
 import { useLiveKeyboardShortcuts } from '../../hooks/live/useLiveKeyboardShortcuts';
 import { useLiveUndo } from '../../hooks/live/useLiveUndo';
-import type { ShowCue } from '../../types';
+import type {
+  GroupCustomMovementSlotLinks,
+  GroupQuickMovementSaves,
+  ShowCue,
+} from '../../types';
+import { runCueChannelFade } from '../../utils/cueFade';
 import { AmbianceSection } from './live/AmbianceSection';
 import { MovementSection } from './live/MovementSection';
 import { MasterGlobalSection } from './live/MasterGlobalSection';
-import { RythmeSection } from './live/RythmeSection';
+import { AutoLiveSection } from './live/AutoLiveSection';
+import { LiveAutoActiveBanner } from './live/LiveAutoActiveBanner';
+import { LiveDmxConnectionBanner } from './live/LiveDmxConnectionBanner';
+import { LiveToast } from './live/LiveToast';
+import {
+  LiveManualViewSwitch,
+  type LiveManualView,
+} from './live/LiveManualViewSwitch';
+import { LiveBeginnerBanner } from './live/LiveBeginnerBanner';
+import type { LiveProfile } from '../../hooks/useAppPreferences';
+import {
+  getLiveAmbianceGroups,
+  getLiveEmptyGroups,
+  getLiveLyreDisplayGroups,
+  getLiveUnassignedGroups,
+} from '../../utils/liveGroups';
 import { StrobeModal } from './live/StrobeModal';
 import { ColorPickerModal } from './live/ColorPickerModal';
 import { SavePresetModal } from './live/SavePresetModal';
@@ -25,12 +54,19 @@ import type {
   GroupIntensity,
   GroupMovement,
   GroupPosition,
+  GroupPositionMemoryMode,
   LivePanTilt,
-  MovementPreset,
   RgbColor,
 } from '../../types';
 
+export type LiveTabVariant = 'manual' | 'auto';
+
 interface LiveTabProps {
+  variant?: LiveTabVariant;
+  /** Moteur actif sans UI (Auto Live en arrière-plan). */
+  headless?: boolean;
+  autoLiveState: AutoLiveState;
+  setAutoLiveState: React.Dispatch<React.SetStateAction<AutoLiveState>>;
   fixtures: Fixture[];
   channels: number[];
   pan: number;
@@ -81,18 +117,86 @@ interface LiveTabProps {
   setGroupGobos: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   groupPositions: Record<string, GroupPosition[]>;
   setGroupPositions: React.Dispatch<React.SetStateAction<Record<string, GroupPosition[]>>>;
-  groupMovementPresets: Record<string, MovementPreset[]>;
-  setGroupMovementPresets: React.Dispatch<React.SetStateAction<Record<string, MovementPreset[]>>>;
+  groupCenterPositions: Record<string, GroupPosition>;
+  setGroupCenterPositions: React.Dispatch<
+    React.SetStateAction<Record<string, GroupPosition>>
+  >;
+  groupMovementCenters: Record<string, Record<string, { x: number; y: number }>>;
+  setGroupMovementCenters: React.Dispatch<
+    React.SetStateAction<Record<string, Record<string, { x: number; y: number }>>>
+  >;
+  groupMovementCenterLinked: Record<string, boolean>;
+  setGroupMovementCenterLinked: React.Dispatch<
+    React.SetStateAction<Record<string, boolean>>
+  >;
+  groupPositionMemoryMode: Record<string, GroupPositionMemoryMode>;
+  setGroupPositionMemoryMode: React.Dispatch<
+    React.SetStateAction<Record<string, GroupPositionMemoryMode>>
+  >;
+  groupQuickMovementSaves: GroupQuickMovementSaves;
+  setGroupQuickMovementSaves: React.Dispatch<
+    React.SetStateAction<GroupQuickMovementSaves>
+  >;
   groupCustomTrajectories: Record<string, CustomTrajectory[]>;
   setGroupCustomTrajectories: React.Dispatch<React.SetStateAction<Record<string, CustomTrajectory[]>>>;
+  groupCustomMovementSlotLinks: GroupCustomMovementSlotLinks;
+  setGroupCustomMovementSlotLinks: React.Dispatch<
+    React.SetStateAction<GroupCustomMovementSlotLinks>
+  >;
   fixtureCalibration: Record<number, CalibrationSettings>;
   setFixtureCalibration: React.Dispatch<React.SetStateAction<Record<number, CalibrationSettings>>>;
   liveGroupPositions: Record<string, LivePanTilt>;
   liveGroupColors: Record<string, number>;
   liveGroupGobos: Record<string, number>;
+  openCalibrationWhenActive?: boolean;
+  onCalibrationActivated?: () => void;
+  onGoToPatch?: () => void;
+  onOpenAutoLive?: () => void;
+  /** Auto Live ON pendant que l’utilisateur est sur Live manuel. */
+  autoLiveActiveInBackground?: boolean;
+  dmxConnected?: boolean;
+  dmxPort?: string;
+  dmxConnectionError?: string | null;
+  onDmxReconnect?: () => void;
+  confirmBlackout?: boolean;
+  liveCompact?: boolean;
+  liveProfile?: LiveProfile;
+  autoLiveEasyMode?: boolean;
+  onAutoLiveEasyModeChange?: (enabled: boolean) => void;
 }
 
 export const LiveTab = (props: LiveTabProps) => {
+  const {
+    variant = 'manual',
+    headless = false,
+    autoLiveState,
+    setAutoLiveState,
+    openCalibrationWhenActive,
+    onCalibrationActivated,
+    onGoToPatch,
+    onOpenAutoLive,
+    autoLiveActiveInBackground = false,
+    dmxConnected = true,
+    dmxPort = '',
+    dmxConnectionError = null,
+    onDmxReconnect,
+    confirmBlackout = false,
+    liveCompact = false,
+    liveProfile = 'beginner',
+    autoLiveEasyMode = false,
+    onAutoLiveEasyModeChange,
+  } = props;
+  const liveBeginner = liveProfile === 'beginner' && variant === 'manual';
+  const autoLiveSimple = liveProfile === 'beginner' && variant === 'auto';
+  const [manualView, setManualView] = useState<LiveManualView>('consoles');
+  const [cuePlayhead, setCuePlayhead] = useState(0);
+  const [undoToast, setUndoToast] = useState<string | null>(null);
+  const [calibrationFixtureFilter, setCalibrationFixtureFilter] = useState<number[] | null>(
+    null
+  );
+  const [calibrationGroupName, setCalibrationGroupName] = useState<string | null>(null);
+  const isManualLive = variant === 'manual';
+  const isAutoLive = variant === 'auto';
   const {
     fixtures, channels, pan, tilt, groups, selectedGroup, setSelectedGroup,
     selectedFixtures, setSelectedFixtures, updateDmx, handlePanChange, handleTiltChange,
@@ -101,22 +205,34 @@ export const LiveTab = (props: LiveTabProps) => {
     groupPulseActive, setGroupPulseActive, bpm, setBpm, groupMovements, setGroupMovements,
     groupPan, setGroupPan, groupTilt, setGroupTilt, groupAutoColorActive, setGroupAutoColorActive,
     groupAutoGoboActive, setGroupAutoGoboActive, groupGobos, setGroupGobos, groupPositions,
-    setGroupPositions, groupMovementPresets, setGroupMovementPresets, groupCustomTrajectories,
-    setGroupCustomTrajectories, fixtureCalibration, setFixtureCalibration, liveGroupPositions,
+    setGroupPositions, groupCenterPositions, setGroupCenterPositions,
+    groupMovementCenters,
+    setGroupMovementCenters,
+    groupMovementCenterLinked,
+    setGroupMovementCenterLinked,
+    groupQuickMovementSaves,
+    setGroupQuickMovementSaves, groupCustomTrajectories,
+    setGroupCustomTrajectories, groupCustomMovementSlotLinks,
+    setGroupCustomMovementSlotLinks, fixtureCalibration, setFixtureCalibration, liveGroupPositions,
     liveGroupColors, liveGroupGobos
   } = props;
 
   const { cues, addCueFromChannels, removeCue, reorderCue } = useCueList();
   const cueIndexRef = useRef(0);
+  const cueFadeGenerationRef = useRef(0);
   const { pushSnapshot, popSnapshot } = useLiveUndo();
 
   const handleGoCue = useCallback(
-    async (cue: ShowCue) => {
-      for (let i = 0; i < cue.channels.length; i++) {
-        if (cue.channels[i] !== channels[i]) {
-          await updateDmx(i, cue.channels[i]);
-        }
-      }
+    (cue: ShowCue) => {
+      const gen = ++cueFadeGenerationRef.current;
+      const startChannels = channels.slice();
+      runCueChannelFade({
+        startChannels,
+        targetChannels: cue.channels,
+        fadeMs: cue.fadeMs,
+        updateChannel: (ch, val) => updateDmx(ch, val),
+        isCancelled: () => cueFadeGenerationRef.current !== gen,
+      });
     },
     [channels, updateDmx]
   );
@@ -127,13 +243,16 @@ export const LiveTab = (props: LiveTabProps) => {
     groupColors, setGroupColors, groupPulseActive, setGroupPulseActive, bpm, setBpm,
     groupAutoColorActive, setGroupAutoColorActive, groupAutoGoboActive, setGroupAutoGoboActive,
     groupGobos, setGroupGobos, groupPan, setGroupPan, groupTilt, setGroupTilt,
+    setGroupMovementCenters,
     fixtureCalibration, setFixtureCalibration
   });
 
   const {
     isBeatActive, isAudioActive, setIsAudioActive, audioDevices, selectedAudioDeviceId,
-    setSelectedAudioDeviceId, audioStats, linkedGroups, globalStrobe,
-    isAmbianceAutoColorActive, isAmbiancePulseActive, groupStrobeValues, setGroupStrobeValues,
+    setSelectedAudioDeviceId, audioStats, linkedGroups, setLinkedGroups, globalStrobe,
+    isAmbianceAutoColorActive, setIsAmbianceAutoColorActive,
+    isAmbiancePulseActive, setIsAmbiancePulseActive,
+    groupStrobeValues, setGroupStrobeValues,
     currentMasterIntensity, activeMacro, fadeTime, setFadeTime, customPresets, setCustomPresets,
     userColors, setUserColors, isCalibrationOpen, setIsCalibrationOpen, isStrobeModalOpen,
     setIsStrobeModalOpen, isColorModalOpen, setIsColorModalOpen, isSavePresetModalOpen,
@@ -148,9 +267,157 @@ export const LiveTab = (props: LiveTabProps) => {
     getLinkedFixtureIds, onColorModalSave
   } = logic;
 
-  const ambianceGroups = groups.filter(g => 
-    g.fixtureIds.length > 0 && 
-    g.isAmbiance === true
+  useEffect(() => {
+    if (openCalibrationWhenActive) {
+      setIsCalibrationOpen(true);
+      onCalibrationActivated?.();
+    }
+  }, [openCalibrationWhenActive, setIsCalibrationOpen, onCalibrationActivated]);
+
+  const { setEnabled: setAutoLiveEnabled, setOptions: setAutoLiveOptions } = useAutoLive({
+    state: autoLiveState,
+    setState: setAutoLiveState,
+    groups,
+    fixtures,
+    audioStats,
+    bpm,
+    masterDimmer,
+    handleMasterDimmer,
+    handleGlobalAction,
+    linkedGroups,
+    setLinkedGroups,
+    groupPulseActive,
+    setGroupPulseActive,
+    groupAutoColorActive,
+    setGroupAutoColorActive,
+    groupAutoGoboActive,
+    setGroupAutoGoboActive,
+    groupMovements,
+    setGroupMovements,
+    isAmbiancePulseActive,
+    setIsAmbiancePulseActive,
+    isAmbianceAutoColorActive,
+    setIsAmbianceAutoColorActive,
+    setIsAudioActive,
+    customPresets,
+    applyAmbiancePreset,
+    fadeTimeSeconds: fadeTime,
+  });
+
+  const applyAutoLivePreset = useCallback(
+    (id: AutoLivePresetId) => {
+      const preset = getAutoLivePreset(id);
+      setAutoLiveState((s) => ({
+        ...s,
+        presetId: id,
+        options: { ...preset.options },
+      }));
+      handleMasterDimmer(preset.suggestedMaster);
+    },
+    [setAutoLiveState, handleMasterDimmer]
+  );
+
+  const patchAutoLiveOption = useCallback(
+    <K extends keyof AutoLiveOptions>(key: K, value: AutoLiveOptions[K]) => {
+      setAutoLiveOptions({ [key]: value } as Partial<AutoLiveOptions>);
+      setAutoLiveState((s) => ({ ...s, presetId: 'custom' }));
+    },
+    [setAutoLiveOptions, setAutoLiveState]
+  );
+
+  const ambianceGroups = useMemo(
+    () => getLiveAmbianceGroups(groups, fixtures),
+    [groups, fixtures]
+  );
+  const unassignedLiveGroups = useMemo(
+    () => getLiveUnassignedGroups(groups, fixtures),
+    [groups, fixtures]
+  );
+  const emptyPatchGroups = useMemo(() => getLiveEmptyGroups(groups), [groups]);
+
+  const launchOneClickParty = useCallback(() => {
+    let presets = customPresets;
+    const merged = mergeBeginnerFactoryPresets(customPresets, ambianceGroups);
+    if (merged) {
+      presets = merged;
+      setCustomPresets(merged);
+    }
+
+    const ambianceIds = ambianceGroups.map((g) => g.id);
+    const presetId = pickOneClickPartyPresetId(groups, fixtures, ambianceIds);
+    const preset = getAutoLivePreset(presetId);
+    const energyLooks = buildOneClickPartyEnergyLooks(presets);
+
+    setLinkedGroups((prev) => {
+      if (prev.length > 0) return prev;
+      return ambianceIds;
+    });
+
+    setAutoLiveState((s) => ({
+      ...s,
+      enabled: true,
+      presetId,
+      options: { ...preset.options },
+      energyLooks,
+    }));
+    handleMasterDimmer(oneClickPartySuggestedMaster(presetId));
+    setIsAudioActive(true);
+  }, [
+    customPresets,
+    ambianceGroups,
+    groups,
+    fixtures,
+    setCustomPresets,
+    setLinkedGroups,
+    setAutoLiveState,
+    handleMasterDimmer,
+    setIsAudioActive,
+  ]);
+
+  const factoryPresetsSeededRef = useRef(false);
+
+  useEffect(() => {
+    if (!liveBeginner || ambianceGroups.length === 0) return;
+    setLinkedGroups((prev) => {
+      if (prev.length > 0) return prev;
+      return ambianceGroups.map((g) => g.id);
+    });
+  }, [liveBeginner, ambianceGroups, setLinkedGroups]);
+
+  useEffect(() => {
+    if (!liveBeginner || factoryPresetsSeededRef.current || ambianceGroups.length === 0) return;
+    const merged = mergeBeginnerFactoryPresets(customPresets, ambianceGroups);
+    if (merged) {
+      factoryPresetsSeededRef.current = true;
+      setCustomPresets(merged);
+    }
+  }, [liveBeginner, ambianceGroups, customPresets, setCustomPresets]);
+
+  useEffect(() => {
+    if (liveBeginner && manualView === 'cues') {
+      setManualView('consoles');
+    }
+  }, [liveBeginner, manualView]);
+
+  const saveAmbianceToPresetSlot = useCallback(
+    (slot: string, name: string) => {
+      const label = name.trim() || `Preset ${slot}`;
+      setCustomPresets((prev) => ({
+        ...prev,
+        [slot]: captureAmbianceState(label),
+      }));
+    },
+    [captureAmbianceState, setCustomPresets]
+  );
+
+  const handleAddCueWithOptionalPreset = useCallback(
+    (name: string, ch: number[], fadeMs: number, alsoPresetSlot?: string) => {
+      addCueFromChannels(name, ch, fadeMs);
+      if (alsoPresetSlot) {
+        saveAmbianceToPresetSlot(alsoPresetSlot, name || `Cue ${cues.length + 1}`);
+      }
+    },
+    [addCueFromChannels, saveAmbianceToPresetSlot, cues.length]
   );
 
   const applyAmbiancePresetWithUndo = useCallback(
@@ -175,17 +442,43 @@ export const LiveTab = (props: LiveTabProps) => {
     ]
   );
 
+  const syncCuePlayhead = useCallback(
+    (index: number) => {
+      const len = cues.length;
+      const idx = len === 0 ? 0 : ((index % len) + len) % len;
+      cueIndexRef.current = idx;
+      setCuePlayhead(idx);
+    },
+    [cues.length]
+  );
+
+  useEffect(() => {
+    if (cues.length === 0) syncCuePlayhead(0);
+    else if (cuePlayhead >= cues.length) syncCuePlayhead(cues.length - 1);
+  }, [cues.length, cuePlayhead, syncCuePlayhead]);
+
+  const handleGoCueAt = useCallback(
+    (cue: ShowCue, index: number) => {
+      handleGoCue(cue);
+      if (cues.length > 0) syncCuePlayhead(index + 1);
+    },
+    [handleGoCue, cues.length, syncCuePlayhead]
+  );
+
   const goNextCue = useCallback(() => {
     if (cues.length === 0) return;
     const idx = cueIndexRef.current % cues.length;
-    void handleGoCue(cues[idx]);
-    cueIndexRef.current = (idx + 1) % cues.length;
-  }, [cues, handleGoCue]);
+    handleGoCue(cues[idx]);
+    syncCuePlayhead(idx + 1);
+  }, [cues, handleGoCue, syncCuePlayhead]);
 
   const onBlackout = useCallback(async () => {
+    if (confirmBlackout && !window.confirm('Blackout total — couper toute la sortie DMX ?')) {
+      return;
+    }
     await invoke('blackout');
     handleGlobalAction('dimmer', 0);
-  }, [handleGlobalAction]);
+  }, [confirmBlackout, handleGlobalAction]);
 
   const onUndoLive = useCallback(() => {
     const snap = popSnapshot();
@@ -195,6 +488,7 @@ export const LiveTab = (props: LiveTabProps) => {
     setGroupColors(snap.groupColors);
     setGroupAutoColorActive(snap.groupAutoColorActive);
     setGroupPulseActive(snap.groupPulseActive);
+    setUndoToast('Preset ambiance annulé · Ctrl+Z');
   }, [
     popSnapshot,
     handleMasterDimmer,
@@ -207,124 +501,263 @@ export const LiveTab = (props: LiveTabProps) => {
   const keyboardActions = useMemo(
     () => ({
       onBlackout,
-      onTapTempo: handleTap,
-      onGoCue: goNextCue,
+      onTapTempo: liveBeginner ? () => {} : handleTap,
+      onGoCue: liveBeginner ? () => {} : goNextCue,
       onUndo: onUndoLive,
     }),
-    [onBlackout, handleTap, goNextCue, onUndoLive]
+    [onBlackout, handleTap, goNextCue, onUndoLive, liveBeginner]
   );
 
-  useLiveKeyboardShortcuts(true, keyboardActions);
+  useLiveKeyboardShortcuts(isManualLive && !headless, keyboardActions);
+
+  if (headless) {
+    return null;
+  }
+
+  const masterSectionProps = {
+    masterVal: masterDimmer,
+    globalStrobe,
+    handleGlobalAction,
+    handleEndOfSong,
+    bpm,
+    setBpm,
+    isAudioActive,
+    setIsAudioActive,
+    handleTap,
+    isBeatActive,
+    audioDevices,
+    selectedAudioDeviceId,
+    setSelectedAudioDeviceId,
+    audioStats,
+    onBlackout,
+    liveBeginner,
+    showKeyboardShortcuts: isManualLive,
+  };
+
+  const dmxBanner =
+    !dmxConnected && onDmxReconnect ? (
+      <LiveDmxConnectionBanner
+        port={dmxPort}
+        connectionError={dmxConnectionError}
+        onReconnect={onDmxReconnect}
+      />
+    ) : null;
+
+  if (isAutoLive) {
+    return (
+      <div className="flex h-[calc(100vh-140px)] flex-col gap-3 px-3 pb-3 overflow-hidden">
+        <MasterGlobalSection {...masterSectionProps} liveBeginner={autoLiveSimple} />
+
+        {dmxBanner}
+
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+          <AutoLiveSection
+            state={autoLiveState}
+            customPresets={customPresets}
+            simpleMode={autoLiveSimple}
+            easyMode={autoLiveEasyMode}
+            onEasyModeChange={onAutoLiveEasyModeChange}
+            onLaunchOneClickParty={launchOneClickParty}
+            onToggleEnabled={() => setAutoLiveEnabled(!autoLiveState.enabled)}
+            onDisableAutoLive={() => setAutoLiveEnabled(false)}
+            onOptionChange={patchAutoLiveOption}
+            onApplyPreset={applyAutoLivePreset}
+            onEnergyLooksChange={(patch) =>
+              setAutoLiveState((s) => ({
+                ...s,
+                energyLooks: { ...s.energyLooks, ...patch },
+              }))
+            }
+            onBandRoutingChange={(patch) =>
+              setAutoLiveState((s) => ({
+                ...s,
+                bandRouting: { ...s.bandRouting, ...patch },
+              }))
+            }
+            audioActive={isAudioActive}
+            indicators={{
+              bpm,
+              masterDimmer,
+              bass: audioStats.bass ?? 0,
+              mid: audioStats.mid ?? 0,
+              isBeatActive,
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const ambianceSection = (
+    <AmbianceSection
+      ambianceGroups={ambianceGroups}
+      linkedGroups={linkedGroups}
+      toggleGroupLink={toggleGroupLink}
+      groupIntensities={groupIntensities}
+      groupColors={groupColors}
+      isAmbianceAutoColorActive={isAmbianceAutoColorActive}
+      isAmbiancePulseActive={isAmbiancePulseActive}
+      activeMacro={activeMacro}
+      getLinkedFixtureIds={getLinkedFixtureIds}
+      sendIntensity={sendIntensity}
+      sendColor={sendColor}
+      handleMacro={handleMacro}
+      onStrobeEdit={onStrobeEdit}
+      groupStrobeValues={groupStrobeValues}
+      onUserColorEdit={onUserColorEdit}
+      getGroupUserColors={getGroupUserColors}
+      currentMasterIntensity={currentMasterIntensity}
+      groupAutoColorActive={groupAutoColorActive}
+      groupPulseActive={groupPulseActive}
+      customPresets={customPresets}
+      applyAmbiancePreset={applyAmbiancePresetWithUndo}
+      setPresetToSaveId={setPresetToSaveId}
+      setIsSavePresetModalOpen={setIsSavePresetModalOpen}
+      fadeTime={fadeTime}
+      setFadeTime={setFadeTime}
+      channels={channels}
+      fixtures={fixtures}
+      onGoToPatch={onGoToPatch}
+      beginnerMode={liveBeginner}
+      unassignedLiveGroups={unassignedLiveGroups}
+      emptyPatchGroups={emptyPatchGroups}
+    />
+  );
+
+  const movementSection = (
+    <MovementSection
+      groups={groups}
+      fixtures={fixtures}
+      handlePanChange={handlePanChange}
+      handleTiltChange={handleTiltChange}
+      handleMultiFixtureAction={handleMultiFixtureAction}
+      groupColors={groupColors}
+      groupIntensities={groupIntensities}
+      currentMasterIntensity={currentMasterIntensity}
+      groupPulseActive={groupPulseActive}
+      groupAutoColorActive={groupAutoColorActive}
+      groupAutoGoboActive={groupAutoGoboActive}
+      groupGobos={groupGobos}
+      groupPan={groupPan}
+      groupTilt={groupTilt}
+      liveGroupPositions={liveGroupPositions}
+      liveGroupColors={liveGroupColors}
+      liveGroupGobos={liveGroupGobos}
+      sendIntensity={sendIntensity}
+      sendColor={sendColor}
+      sendMovement={sendMovement}
+      handleMacro={handleMacro}
+      onStrobeEdit={onStrobeEdit}
+      groupStrobeValues={groupStrobeValues}
+      channels={channels}
+      updateDmx={updateDmx}
+      groupMovements={groupMovements}
+      onOpenCalibration={() => {
+        setCalibrationFixtureFilter(null);
+        setCalibrationGroupName(null);
+        setIsCalibrationOpen(true);
+      }}
+      onOpenCalibrationForGroup={(_groupId, groupName, fixtureIds) => {
+        setCalibrationFixtureFilter(fixtureIds);
+        setCalibrationGroupName(groupName);
+        setIsCalibrationOpen(true);
+      }}
+      onOpenEffects={(groupId, groupName, fixtureIds) => {
+        setEffectsModalState({
+          isOpen: true,
+          groupId,
+          groupName,
+          fixtureIds,
+        });
+      }}
+      groupPositions={groupPositions}
+      groupCenterPositions={groupCenterPositions}
+      groupMovementCenters={groupMovementCenters}
+      groupMovementCenterLinked={groupMovementCenterLinked}
+      setGroupMovementCenterLinked={setGroupMovementCenterLinked}
+      fixtureCalibration={fixtureCalibration}
+      groupQuickMovementSaves={groupQuickMovementSaves}
+      groupCustomMovementSlotLinks={groupCustomMovementSlotLinks}
+      groupCustomTrajectories={groupCustomTrajectories}
+      setGroupMovements={setGroupMovements}
+      onGoToPatch={onGoToPatch}
+      beginnerMode={liveBeginner}
+    />
+  );
+
+  const liveShellClass = liveCompact
+    ? 'flex h-[calc(100vh-120px)] flex-col gap-2 px-2 pb-2 overflow-hidden'
+    : 'flex h-[calc(100vh-128px)] flex-col gap-3 px-3 pb-3 overflow-hidden';
+  const liveGridClass = liveCompact
+    ? 'grid h-full grid-cols-1 md:grid-cols-2 gap-3 min-h-0'
+    : 'grid h-full grid-cols-1 md:grid-cols-2 gap-4 min-h-0';
+  const lyreGroupCount = getLiveLyreDisplayGroups(groups, fixtures).length;
 
   return (
-    <div className="flex h-[calc(100vh-140px)] gap-6 overflow-hidden">
-      
-      {/* COLONNE PRINCIPALE (Gaucher) */}
-      <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar space-y-8 pb-20">
-        
-        {/* SECTION MASTER GLOBAL (Format Ultra-Compact) */}
-        <CueListSection
-          channels={channels}
-          cues={cues}
-          onAddCue={addCueFromChannels}
-          onRemoveCue={removeCue}
-          onReorderCue={reorderCue}
-          onGoCue={handleGoCue}
-        />
+    <div className={liveShellClass} data-live-compact={liveCompact ? 'true' : undefined}>
+      <MasterGlobalSection {...masterSectionProps} />
 
-        <MasterGlobalSection 
-          masterVal={masterDimmer}
-          globalStrobe={globalStrobe}
-          handleGlobalAction={handleGlobalAction}
-          handleEndOfSong={handleEndOfSong}
-          bpm={bpm}
-          setBpm={setBpm}
-          isAudioActive={isAudioActive}
-          setIsAudioActive={setIsAudioActive}
-          handleTap={handleTap}
-          isBeatActive={isBeatActive}
-          audioDevices={audioDevices}
-          selectedAudioDeviceId={selectedAudioDeviceId}
-          setSelectedAudioDeviceId={setSelectedAudioDeviceId}
-          audioStats={audioStats}
-        />
+      {dmxBanner}
 
-        {/* SECTION AMBIANCES */}
-        <AmbianceSection 
-          ambianceGroups={ambianceGroups}
-          linkedGroups={linkedGroups}
-          toggleGroupLink={toggleGroupLink}
-          groupIntensities={groupIntensities}
-          groupColors={groupColors}
-          isAmbianceAutoColorActive={isAmbianceAutoColorActive}
-          isAmbiancePulseActive={isAmbiancePulseActive}
-          activeMacro={activeMacro}
-          getLinkedFixtureIds={getLinkedFixtureIds}
-          sendIntensity={sendIntensity}
-          sendColor={sendColor}
-          handleMacro={handleMacro}
-          onStrobeEdit={onStrobeEdit}
-          groupStrobeValues={groupStrobeValues}
-          onUserColorEdit={onUserColorEdit}
-          getGroupUserColors={getGroupUserColors}
-          currentMasterIntensity={currentMasterIntensity}
-          groupAutoColorActive={groupAutoColorActive}
-          groupPulseActive={groupPulseActive}
-          customPresets={customPresets}
-          applyAmbiancePreset={applyAmbiancePresetWithUndo}
-          setPresetToSaveId={setPresetToSaveId}
-          setIsSavePresetModalOpen={setIsSavePresetModalOpen}
-          fadeTime={fadeTime}
-          setFadeTime={setFadeTime}
-          channels={channels}
-          fixtures={fixtures}
-        />
+      {liveBeginner && <LiveBeginnerBanner onOpenAutoLive={onOpenAutoLive} />}
 
-        {/* SECTION MOUVEMENTS (LYRES) */}
-        <MovementSection 
-          groups={groups}
-          fixtures={fixtures}
-          handlePanChange={handlePanChange}
-          handleTiltChange={handleTiltChange}
-          handleMultiFixtureAction={handleMultiFixtureAction}
-          groupColors={groupColors}
-          groupIntensities={groupIntensities}
-          currentMasterIntensity={currentMasterIntensity}
-          groupPulseActive={groupPulseActive}
-          groupAutoColorActive={groupAutoColorActive}
-          groupAutoGoboActive={groupAutoGoboActive}
-          groupGobos={groupGobos}
-          groupPan={groupPan}
-          groupTilt={groupTilt}
-          liveGroupPositions={liveGroupPositions}
-          liveGroupColors={liveGroupColors}
-          liveGroupGobos={liveGroupGobos}
-          sendIntensity={sendIntensity}
-          sendColor={sendColor}
-          sendMovement={sendMovement}
-          handleMacro={handleMacro}
-          onStrobeEdit={onStrobeEdit}
-          groupStrobeValues={groupStrobeValues}
-          channels={channels}
-          updateDmx={updateDmx}
-          onOpenCalibration={() => setIsCalibrationOpen(true)}
-          onOpenEffects={(groupId, groupName, fixtureIds) => {
-            setEffectsModalState({
-              isOpen: true,
-              groupId,
-              groupName,
-              fixtureIds
-            });
-          }}
-          groupPositions={groupPositions}
-          groupMovementPresets={groupMovementPresets}
-          setGroupMovements={setGroupMovements}
-        />
+      {autoLiveActiveInBackground && onOpenAutoLive && (
+        <LiveAutoActiveBanner onOpenAutoLive={onOpenAutoLive} />
+      )}
 
-        <CalibrationModal 
+      {!liveBeginner && (
+        <LiveManualViewSwitch view={manualView} onChange={setManualView} cueCount={cues.length} />
+      )}
+
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {manualView === 'cues' ? (
+          <div className="h-full overflow-y-auto custom-scrollbar pr-1">
+            <CueListSection
+              channels={channels}
+              cues={cues}
+              playheadIndex={cuePlayhead}
+              onPlayheadChange={syncCuePlayhead}
+              onAddCue={handleAddCueWithOptionalPreset}
+              onRemoveCue={removeCue}
+              onReorderCue={reorderCue}
+              onGoCue={handleGoCueAt}
+              onGoNextCue={goNextCue}
+              onCopyLiveAmbianceToPreset={saveAmbianceToPresetSlot}
+            />
+          </div>
+        ) : (
+          <div className={liveGridClass}>
+            <div className="min-h-0 overflow-y-auto custom-scrollbar pr-1">{ambianceSection}</div>
+            <div className="min-h-0 flex flex-col gap-2 overflow-hidden">
+              <div className="flex shrink-0 items-center justify-between px-1">
+                <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-400">
+                  Lyres &amp; mouvements
+                  {lyreGroupCount > 0 ? (
+                    <span className="ml-2 font-mono text-blue-300/80">({lyreGroupCount})</span>
+                  ) : null}
+                </h2>
+                <span className="text-[8px] font-bold uppercase text-slate-600 md:hidden">
+                  Colonne droite — scroll si besoin
+                </span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar pr-1">
+                {movementSection}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <CalibrationModal
           isOpen={isCalibrationOpen}
-          onClose={() => setIsCalibrationOpen(false)}
+          onClose={() => {
+            setIsCalibrationOpen(false);
+            setCalibrationFixtureFilter(null);
+            setCalibrationGroupName(null);
+          }}
           fixtures={fixtures}
+          fixtureIdsFilter={calibrationFixtureFilter}
+          filterGroupName={calibrationGroupName}
           calibration={fixtureCalibration}
           onUpdateCalibration={(id, settings) => {
             setFixtureCalibration((prev: Record<number, CalibrationSettings>) => ({
@@ -355,22 +788,21 @@ export const LiveTab = (props: LiveTabProps) => {
           sendMovement={sendMovement}
           groupPositions={groupPositions}
           setGroupPositions={setGroupPositions}
-          groupMovementPresets={groupMovementPresets}
-          setGroupMovementPresets={setGroupMovementPresets}
+          groupCenterPositions={groupCenterPositions}
+          setGroupCenterPositions={setGroupCenterPositions}
+          groupMovementCenters={groupMovementCenters}
+          groupMovementCenterLinked={groupMovementCenterLinked}
+          setGroupMovementCenterLinked={setGroupMovementCenterLinked}
+          fixtureCalibration={fixtureCalibration}
+          channels={channels}
           groupCustomTrajectories={groupCustomTrajectories}
           setGroupCustomTrajectories={setGroupCustomTrajectories}
+          groupQuickMovementSaves={groupQuickMovementSaves}
+          setGroupQuickMovementSaves={setGroupQuickMovementSaves}
+          groupCustomMovementSlotLinks={groupCustomMovementSlotLinks}
+          setGroupCustomMovementSlotLinks={setGroupCustomMovementSlotLinks}
         />
 
-        {/* SECTION RYTHME ET EFFETS */}
-        {/* Masqu├® car remplac├® par les modales d'effets par groupe */}
-        {false && <RythmeSection 
-          fixtures={fixtures}
-          channels={channels}
-          updateDmx={updateDmx}
-        />}
-      </div>
-
-      {/* MODALES DE R├ëGLAGES */}
       <StrobeModal 
         isOpen={isStrobeModalOpen}
         onClose={() => setIsStrobeModalOpen(false)}
@@ -388,7 +820,7 @@ export const LiveTab = (props: LiveTabProps) => {
       <ColorPickerModal 
         isOpen={isColorModalOpen}
         onClose={() => setIsColorModalOpen(false)}
-        title={`S├ëLECTEUR DE COULEURS ${activeColorGroupId ? '(GROUPE)' : '(MASTER)'}`}
+        title={`Sélecteur de couleurs ${activeColorGroupId ? '(groupe)' : '(master)'}`}
         tempColor={tempColor}
         tempHue={tempHue}
         tempSat={tempSat}
@@ -423,6 +855,8 @@ export const LiveTab = (props: LiveTabProps) => {
           setPresetToSaveId(null);
         }}
       />
+
+      <LiveToast message={undoToast} onDone={() => setUndoToast(null)} />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 # Documentation Petitelune DMX
 
-## Introduction : Petitelune DMX v1.7.0
+## Introduction : Petitelune DMX v1.8.0
 **Petitelune DMX** est une application de contrôle d'éclairage professionnel (Pro Lighting Control) développée avec l'architecture **Tauri** (Rust + React). Elle permet de piloter un univers de 512 canaux DMX en temps réel, avec une interface moderne et fluide, optimisée pour le spectacle vivant.
 
 ---

@@ -2,7 +2,14 @@ import { useEffect } from 'react';
 import { Fixture, Group } from '../types';
 import { hslToRgb } from '../utils/colorUtils';
 import { invokeUpdateDmx } from '../utils/dmxInvoke';
-import { buildLiveMotionPayload, fetchMotionPreview, syncLiveMotions } from '../utils/motionSync';
+import {
+  buildLiveMotionPayload,
+  fetchMotionPreview,
+  hasActiveLiveMotion,
+  syncLiveMotions,
+} from '../utils/motionSync';
+import { bassSyncedPulseFactor, colorCycleMs } from '../utils/autoLiveSignals';
+import { getAutoLiveRuntime } from '../utils/autoLiveRuntime';
 import { LiveStore } from './useLiveStore';
 
 interface UseLiveEngineParams {
@@ -25,6 +32,8 @@ export function useLiveEngine({
     groupMovements,
     groupPan,
     groupTilt,
+    groupMovementCenters,
+    groupMovementCenterLinked,
     groupAutoColorActive,
     groupAutoGoboActive,
     groupIntensities,
@@ -48,7 +57,9 @@ export function useLiveEngine({
       groupMovements,
       groupPan,
       groupTilt,
-      fixtureCalibration
+      fixtureCalibration,
+      groupMovementCenters,
+      groupMovementCenterLinked
     );
     void syncLiveMotions(payload).catch((e) => {
       console.warn('[Motion] sync_live_motions échoué:', e);
@@ -60,16 +71,15 @@ export function useLiveEngine({
     groupMovements,
     groupPan,
     groupTilt,
+    groupMovementCenters,
+    groupMovementCenterLinked,
     fixtureCalibration,
     reportDmxError,
   ]);
 
   // Aperçu UI des positions (calculées côté Rust à 40 Hz)
   useEffect(() => {
-    const hasActive = Object.keys(groupMovements).some(
-      (id) =>
-        groupMovements[id]?.shape !== 'none' && groups.some((g) => g.id === id)
-    );
+    const hasActive = hasActiveLiveMotion(groups, fixtures, groupMovements);
 
     if (!hasActive) {
       if (Object.keys(liveGroupPositions).length > 0) setLiveGroupPositions({});
@@ -91,16 +101,24 @@ export function useLiveEngine({
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupMovements, groups, setLiveGroupPositions]);
+  }, [groupMovements, groups, fixtures, setLiveGroupPositions]);
 
   // Boucle Master d'intensité (50fps)
   useEffect(() => {
     const interval = setInterval(() => {
+      const autoRt = getAutoLiveRuntime();
       const beatDuration = (60 / bpm) * 1000;
       const elapsed = Date.now();
       const progress = (elapsed % beatDuration) / beatDuration;
-      const decay = Math.pow(1 - progress, 2);
-      const pulseVal = Math.round(255 * decay);
+      const timerDecay = Math.pow(1 - progress, 2);
+      const audioPulse = bassSyncedPulseFactor(autoRt.bass, autoRt.beatPhase);
+      const pulseNorm =
+        autoRt.enabled && autoRt.followRhythm
+          ? autoRt.pulseUsesBass
+            ? audioPulse
+            : timerDecay
+          : timerDecay;
+      const pulseVal = Math.round(255 * pulseNorm);
 
       fixtures.forEach((fixture) => {
         const group = groups.find((g) => g.fixtureIds.includes(fixture.id));
@@ -160,6 +178,11 @@ export function useLiveEngine({
     ];
 
     const interval = setInterval(() => {
+      const autoRt = getAutoLiveRuntime();
+      const cycleMs =
+        autoRt.enabled && autoRt.autoColor && autoRt.colorUsesHigh
+          ? colorCycleMs(autoRt.high)
+          : 20;
       const newLiveColors: Record<string, number> = {};
       activeGroups.forEach((groupId) => {
         const group = groups.find((g) => g.id === groupId);
@@ -170,7 +193,11 @@ export function useLiveEngine({
         );
 
         if (hasMovingHead) {
-          const colorIndex = Math.floor((Date.now() / 1500) % wheelColors.length);
+          const wheelMs =
+            autoRt.enabled && autoRt.autoColor && autoRt.colorUsesHigh
+              ? 900 + (1 - autoRt.mid) * 800
+              : 1500;
+          const colorIndex = Math.floor((Date.now() / wheelMs) % wheelColors.length);
           const color = wheelColors[colorIndex];
           newLiveColors[groupId] = color.v;
 
@@ -181,7 +208,7 @@ export function useLiveEngine({
             }
           });
         } else {
-          const currentHue = (Date.now() / 20) % 360;
+          const currentHue = (Date.now() / cycleMs) % 360;
           const { r, g, b } = hslToRgb(currentHue, 100, 50);
 
           group.fixtureIds.forEach((id) => {

@@ -1,4 +1,5 @@
 import type { ChannelDef, ChannelFunctionType, FixtureProfile } from '../types';
+import { isAllowedProfileImageUrl } from './fixtureProfileImage';
 
 const VALID_TYPES = new Set(['RGB', 'Moving Head', 'Laser', 'Effect', 'Other']);
 const VALID_CHANNEL_TYPES = new Set<ChannelFunctionType>([
@@ -27,6 +28,11 @@ export function isFixtureProfile(value: unknown): value is FixtureProfile {
   if (!VALID_TYPES.has(p.type)) return false;
   if (!Array.isArray(p.channelDefs)) return false;
   if (p.channelDefs.length !== p.channels) return false;
+  if (p.imageUrl != null) {
+    if (typeof p.imageUrl !== 'string' || !isAllowedProfileImageUrl(p.imageUrl)) {
+      return false;
+    }
+  }
   return p.channelDefs.every(isChannelDef);
 }
 

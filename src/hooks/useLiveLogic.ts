@@ -36,6 +36,7 @@ export const useLiveLogic = (props: UseLiveLogicProps) => {
     setGroupGobos,
     setGroupPan,
     setGroupTilt,
+    setGroupMovementCenters,
     fixtureCalibration,
   } = props;
 
@@ -62,6 +63,7 @@ export const useLiveLogic = (props: UseLiveLogicProps) => {
     setGroupAutoColorActive,
     setGroupPulseActive,
     handleMultiFixtureAction,
+    defaultFadeSeconds: session.fadeTime,
   });
 
   const actions = useLiveActions({
@@ -86,6 +88,7 @@ export const useLiveLogic = (props: UseLiveLogicProps) => {
     setGroupGobos,
     setGroupPan,
     setGroupTilt,
+    setGroupMovementCenters,
     fixtureCalibration,
     isAmbianceAutoColorActive: session.isAmbianceAutoColorActive,
     setIsAmbianceAutoColorActive: session.setIsAmbianceAutoColorActive,
@@ -124,6 +127,7 @@ export const useLiveLogic = (props: UseLiveLogicProps) => {
     setSelectedAudioDeviceId: bpmLogic.setSelectedAudioDeviceId,
     audioStats: bpmLogic.audioStats,
     linkedGroups: session.linkedGroups,
+    setLinkedGroups: session.setLinkedGroups,
     masterDimmer,
     globalStrobe: session.globalStrobe,
     isAutoColorActive: session.isAutoColorActive,

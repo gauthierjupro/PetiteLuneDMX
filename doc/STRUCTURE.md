@@ -50,7 +50,8 @@ graph TD
 - **`hooks/useSettingsStore.ts`** : Connexion série, univers DMX, port, Hz/latence, blackout fail-safe.
 - **`components/ui/ConnectionStatus.tsx`** : Badge header (port · Hz · ms · erreur).
 - **`components/tabs/`** : Chaque fichier représente un module complet (Live, Patch, Stage…).
-- **`components/tabs/Stage3DTab.tsx`** / **`StageTab.tsx`** : Positions scène 2D/3D via `useStagePositions` (`stage_positions` + event sync).
+- **`components/tabs/StageSceneTab.tsx`** : Onglet Scène (Plan \| 3D), liste, snap, multi-sélection.
+- **`components/tabs/Stage3DTab.tsx`** / **`StageTab.tsx`** : Vues 2D/3D via `useStagePositions` (`stage_positions` + event sync).
 - **`hooks/useStagePositions.ts`** / **`utils/stagePositions.ts`** : Charge / fusionne / persiste les positions partagées.
 - **`hooks/useLiveLogic.ts`** : Façade Live (compose `hooks/live/*`).
 - **`hooks/live/`** : Sous-hooks — BPM/audio, presets ambiance, actions DMX, color picker, timers pulse/auto-color, état session.

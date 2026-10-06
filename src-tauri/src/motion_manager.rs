@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 pub enum MotionShape {
     None,
     Circle,
+    Square,
+    Rectangle,
+    Triangle,
+    Diamond,
+    Pentagon,
     Eight,
     PanSweep,
     TiltSweep,
@@ -16,14 +21,28 @@ pub enum MotionShape {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MotionFixtureConfig {
-    /// Adresse DMX de départ (1-512)
-    pub address: usize,
+    /// Canal DMX pan (1–512)
+    #[serde(alias = "address")]
+    pub pan_address: usize,
+    /// Canal DMX tilt (1–512)
+    #[serde(default)]
+    pub tilt_address: usize,
     /// Index dans le groupe (pour le fan / invert180)
     pub index: usize,
     pub invert_pan: bool,
     pub invert_tilt: bool,
     pub offset_pan: f64,
     pub offset_tilt: f64,
+    /// Centre pan de la forme pour cette lyre (0–255).
+    #[serde(default = "default_motion_center")]
+    pub center_pan: f64,
+    /// Centre tilt de la forme pour cette lyre (0–255).
+    #[serde(default = "default_motion_center")]
+    pub center_tilt: f64,
+}
+
+fn default_motion_center() -> f64 {
+    127.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,7 +150,7 @@ impl MotionManager {
                 let fixtures: Vec<String> = g
                     .fixtures
                     .iter()
-                    .map(|f| format!("{}:{}", f.address, f.index))
+                    .map(|f| format!("{}:{}:{}", f.pan_address, f.tilt_address, f.index))
                     .collect();
                 format!(
                     "{}|{:?}|{}|{}|{}|{}|{}|{:?}",
@@ -171,17 +190,22 @@ impl MotionManager {
             _ => size,
         };
 
+        let legacy_pan = (self.legacy_center_x * 255.0).clamp(0.0, 255.0);
+        let legacy_tilt = (self.legacy_center_y * 255.0).clamp(0.0, 255.0);
         let fixtures = self
             .legacy_addresses
             .iter()
             .enumerate()
             .map(|(index, &address)| MotionFixtureConfig {
-                address,
+                pan_address: address,
+                tilt_address: address.saturating_add(1),
                 index,
                 invert_pan: false,
                 invert_tilt: false,
                 offset_pan: 0.0,
                 offset_tilt: 0.0,
+                center_pan: legacy_pan,
+                center_tilt: legacy_tilt,
             })
             .collect();
 
@@ -239,6 +263,51 @@ impl MotionManager {
         self.started_at.elapsed().as_secs_f64()
     }
 
+    /// Point sur le périmètre d’un rectangle centré (±w, ±h), u ∈ [0, 1).
+    fn rectangle_perimeter(u: f64, w: f64, h: f64) -> (f64, f64) {
+        let w = w.abs().max(1e-6);
+        let h = h.abs().max(1e-6);
+        let u = u.rem_euclid(1.0);
+        let mut d = u * 4.0 * (w + h);
+        if d < 2.0 * w {
+            return (-w + d, h);
+        }
+        d -= 2.0 * w;
+        if d < 2.0 * h {
+            return (w, h - d);
+        }
+        d -= 2.0 * h;
+        if d < 2.0 * w {
+            return (w - d, -h);
+        }
+        d -= 2.0 * w;
+        (-w, -h + d)
+    }
+
+    /// Périmètre d’un polygone régulier (sommets sur une ellipse pan/tilt).
+    fn regular_polygon_perimeter(
+        u: f64,
+        n: usize,
+        size_pan: f64,
+        size_tilt: f64,
+    ) -> (f64, f64) {
+        if n < 3 {
+            return (0.0, 0.0);
+        }
+        let u = u.rem_euclid(1.0);
+        let mut verts: Vec<(f64, f64)> = Vec::with_capacity(n);
+        for k in 0..n {
+            let a = -PI / 2.0 + (2.0 * PI * k as f64) / n as f64;
+            verts.push((a.cos() * size_pan, a.sin() * size_tilt));
+        }
+        let seg = u * n as f64;
+        let i = seg.floor() as usize % n;
+        let t = seg - seg.floor();
+        let (x1, y1) = verts[i];
+        let (x2, y2) = verts[(i + 1) % n];
+        (x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
+    }
+
     fn shape_offset(
         shape: MotionShape,
         phase: f64,
@@ -251,6 +320,27 @@ impl MotionManager {
         match shape {
             MotionShape::None => (0.0, 0.0),
             MotionShape::Circle => (phase.cos() * size_pan, phase.sin() * size_tilt),
+            MotionShape::Square => {
+                let s = (size_pan + size_tilt) / 2.0;
+                let u = phase / (2.0 * PI);
+                Self::rectangle_perimeter(u, s, s)
+            }
+            MotionShape::Rectangle => {
+                let u = phase / (2.0 * PI);
+                Self::rectangle_perimeter(u, size_pan, size_tilt)
+            }
+            MotionShape::Triangle => {
+                let u = phase / (2.0 * PI);
+                Self::regular_polygon_perimeter(u, 3, size_pan, size_tilt)
+            }
+            MotionShape::Diamond => {
+                let u = phase / (2.0 * PI);
+                Self::regular_polygon_perimeter(u, 4, size_pan * 0.70710678, size_tilt * 0.70710678)
+            }
+            MotionShape::Pentagon => {
+                let u = phase / (2.0 * PI);
+                Self::regular_polygon_perimeter(u, 5, size_pan, size_tilt)
+            }
             MotionShape::Eight => (
                 phase.cos() * size_pan,
                 (phase * 2.0).sin() * (size_tilt / 2.0),
@@ -290,7 +380,13 @@ impl MotionManager {
             let size_tilt = group.size_tilt / 2.0;
 
             for fixture in &group.fixtures {
-                if fixture.address == 0 || fixture.address > target.len() {
+                let pan_addr = fixture.pan_address;
+                let tilt_addr = if fixture.tilt_address != 0 {
+                    fixture.tilt_address
+                } else {
+                    fixture.pan_address.saturating_add(1)
+                };
+                if pan_addr == 0 || pan_addr > target.len() {
                     continue;
                 }
 
@@ -311,8 +407,10 @@ impl MotionManager {
                     tilt_off = -tilt_off;
                 }
 
-                let mut pan = (group.center_pan + pan_off + fixture.offset_pan).clamp(0.0, 255.0);
-                let mut tilt = (group.center_tilt + tilt_off + fixture.offset_tilt).clamp(0.0, 255.0);
+                let mut pan =
+                    (fixture.center_pan + pan_off + fixture.offset_pan).clamp(0.0, 255.0);
+                let mut tilt =
+                    (fixture.center_tilt + tilt_off + fixture.offset_tilt).clamp(0.0, 255.0);
 
                 if fixture.invert_pan {
                     pan = 255.0 - pan;
@@ -321,10 +419,13 @@ impl MotionManager {
                     tilt = 255.0 - tilt;
                 }
 
-                let idx = fixture.address - 1;
-                if idx + 2 < target.len() {
-                    target[idx] = Self::clamp_u8(pan);
-                    target[idx + 2] = Self::clamp_u8(tilt);
+                let pan_idx = pan_addr - 1;
+                let tilt_idx = tilt_addr.saturating_sub(1);
+                if pan_idx < target.len() {
+                    target[pan_idx] = Self::clamp_u8(pan);
+                }
+                if tilt_idx < target.len() {
+                    target[tilt_idx] = Self::clamp_u8(tilt);
                 }
             }
         }
@@ -401,12 +502,15 @@ mod tests {
             center_tilt: 127.0,
             custom_points: vec![],
             fixtures: vec![MotionFixtureConfig {
-                address: 1,
+                pan_address: 1,
+                tilt_address: 2,
                 index: 0,
                 invert_pan: false,
                 invert_tilt: false,
                 offset_pan: 0.0,
                 offset_tilt: 0.0,
+                center_pan: 127.0,
+                center_tilt: 127.0,
             }],
         }]);
         assert!(mm.has_active_motion());

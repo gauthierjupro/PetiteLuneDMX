@@ -49,7 +49,19 @@ export function useLiveSessionState({
   });
 
   const [currentMasterIntensity, setCurrentMasterIntensity] = React.useState(masterDimmer);
-  const [fadeTime, setFadeTime] = React.useState(0);
+  const [fadeTime, setFadeTimeState] = React.useState(() => {
+    const saved = localStorage.getItem('dmx_live_fade_time');
+    if (!saved) return 0;
+    const n = parseFloat(saved);
+    if (Number.isNaN(n)) return 0;
+    return Math.min(10, Math.max(0, n));
+  });
+
+  const setFadeTime = React.useCallback((val: number) => {
+    const clamped = Math.min(10, Math.max(0, val));
+    setFadeTimeState(clamped);
+    setLocalStorageDebounced('dmx_live_fade_time', String(clamped));
+  }, []);
 
   const [isCalibrationOpen, setIsCalibrationOpen] = React.useState(false);
   const [isStrobeModalOpen, setIsStrobeModalOpen] = React.useState(false);

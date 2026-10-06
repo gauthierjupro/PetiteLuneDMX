@@ -1,16 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../ui/GlassCard';
-import { Layout, Edit2, Zap, Plus, Trash2, X, Check, Users, FileText, FolderOpen, Copy, Clipboard } from 'lucide-react';
+import {
+  Layout,
+  Edit2,
+  Zap,
+  Plus,
+  Trash2,
+  X,
+  Check,
+  Users,
+  FileText,
+  FolderOpen,
+  Copy,
+  Clipboard,
+  Database,
+  Move,
+} from 'lucide-react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { open } from '@tauri-apps/api/dialog';
 import { setLocalStorageJsonDebounced } from '../../utils/localStorageDebounced';
 import type { Fixture, Group, NewFixtureInput } from '../../types';
+import { useFixtureProfiles } from '../../hooks/useFixtureProfiles';
+import { FixtureProfilePhoto } from '../ui/FixtureProfilePhoto';
+import { resolveFixtureProfileImageUrl } from '../../utils/fixtureProfileImage';
+import { hasLibraryProfileForFixture } from '../../utils/fixtureProfileFromPatch';
 import { DEFAULT_DMX_UNIVERSE_ID } from '../../types';
 import {
   getFixtureBg,
   getFixtureColor,
   getFixtureLabelBg,
 } from './patch/fixtureTypeStyles';
+
+export type PatchTabMode = 'combined' | 'parc' | 'groups' | 'monitor';
 
 interface PatchTabProps {
   fixtures: Fixture[];
@@ -25,6 +46,13 @@ interface PatchTabProps {
   onUpdateGroupFixtures: (groupId: string, fixtureIds: number[]) => void;
   onRenameGroup: (groupId: string, newName: string) => void;
   onToggleGroupAmbiance: (groupId: string) => void;
+  onToggleGroupMovement: (groupId: string) => void;
+  onEditLibraryProfile?: (fixture: Fixture) => void;
+  /** Vue segmentée dans Patch & DMX (défaut : layout historique complet). */
+  mode?: PatchTabMode;
+  showPageHeader?: boolean;
+  /** Incrémenter pour ouvrir le formulaire d’ajout (depuis PatchDmxTab). */
+  openAddFixtureSignal?: number;
 }
 
 export const PatchTab = ({ 
@@ -39,7 +67,12 @@ export const PatchTab = ({
   onDeleteGroup,
   onUpdateGroupFixtures,
   onRenameGroup,
-  onToggleGroupAmbiance
+  onToggleGroupAmbiance,
+  onToggleGroupMovement,
+  onEditLibraryProfile,
+  mode = 'combined',
+  showPageHeader = true,
+  openAddFixtureSignal = 0,
 }: PatchTabProps) => {
   const [activeSubTab, setActiveSubTab] = useState<'fixtures' | 'groups'>('fixtures');
   const [isAdding, setIsAdding] = useState(false);
@@ -47,7 +80,7 @@ export const PatchTab = ({
   const [newGroupName, setNewGroupName] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
-  const [library, setLibrary] = useState<any[]>([]);
+  const library = useFixtureProfiles();
   const [newFixture, setNewFixture] = useState({
     name: '',
     profileId: '',
@@ -61,16 +94,24 @@ export const PatchTab = ({
 
   // Charger la bibliothèque et les liens PDF
   useEffect(() => {
-    const savedLib = localStorage.getItem('fixture_profiles');
-    if (savedLib) {
-      setLibrary(JSON.parse(savedLib));
-    }
-
     const savedPdfLinks = localStorage.getItem('dmx_custom_pdf_links');
     if (savedPdfLinks) {
       setCustomPdfLinks(JSON.parse(savedPdfLinks));
     }
   }, []);
+
+  useEffect(() => {
+    if (openAddFixtureSignal > 0) {
+      setActiveSubTab('fixtures');
+      setIsAdding(true);
+    }
+  }, [openAddFixtureSignal]);
+
+  const effectiveSubTab =
+    mode === 'parc' ? 'fixtures' : mode === 'groups' ? 'groups' : activeSubTab;
+  const showMonitor = mode === 'combined' || mode === 'monitor';
+  const showSidePanel = mode === 'combined' || mode === 'parc' || mode === 'groups';
+  const showSubTabSwitch = mode === 'combined';
 
   const savePdfLink = (fixtureId: number, filename: string) => {
     const newLinks = { ...customPdfLinks, [fixtureId]: filename };
@@ -91,6 +132,7 @@ export const PatchTab = ({
       manufacturer: profile.manufacturer,
       model: profile.model,
       type: profile.type,
+      profileId: profile.id,
       address: newFixture.address,
       channels: profile.channels,
       universeId: DEFAULT_DMX_UNIVERSE_ID,
@@ -188,42 +230,52 @@ export const PatchTab = ({
     }
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
-            <Layout className="w-8 h-8 text-cyan-500" />
-            Patch <span className="text-cyan-500/50">Manager</span>
-          </h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Configuration des projecteurs et adresses DMX</p>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={handleOpenFolder}
-            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-2xl text-slate-300 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
-            title="Ouvrir le dossier des notices PDF"
-          >
-            <FolderOpen className="w-4 h-4" />
-            Dossier PDF
-          </button>
-          <button 
-            onClick={() => {
-              setActiveSubTab('fixtures');
-              setIsAdding(true);
-            }}
-            className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-black rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Ajouter un projecteur
-          </button>
-        </div>
-      </div>
+  const monitorCol = mode === 'monitor' ? 'col-span-12' : 'col-span-8';
+  const sideCol =
+    mode === 'parc' || mode === 'groups' ? 'col-span-12' : 'col-span-4';
 
-      <div className="grid grid-cols-12 gap-8 flex-1">
-      {/* Moniteur DMX 512 Canaux */}
-      <div className="col-span-8 flex flex-col h-full">
-        <GlassCard title="Moniteur DMX (512 Canaux)" icon={Layout} className="flex-1 overflow-hidden flex flex-col">
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {showPageHeader && (
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+              <Layout className="w-8 h-8 text-cyan-500" />
+              Patch <span className="text-cyan-500/50">Manager</span>
+            </h1>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">
+              Configuration des projecteurs et adresses DMX
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={handleOpenFolder}
+              className="px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-2xl text-slate-300 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
+              title="Ouvrir le dossier des notices PDF"
+            >
+              <FolderOpen className="w-4 h-4" />
+              Dossier PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSubTab('fixtures');
+                setIsAdding(true);
+              }}
+              className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-black rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter un projecteur
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-12 gap-6 flex-1 min-h-0">
+      {showMonitor && (
+      <div className={`${monitorCol} flex flex-col h-full min-h-0`}>
+        <GlassCard title="Moniteur DMX (512 Canaux)" icon={Layout} className="flex-1 overflow-hidden flex flex-col min-h-0">
           <div className="grid grid-cols-16 gap-1 overflow-y-auto pr-2 custom-scrollbar">
             {channels.map((val, i) => {
               const channelNum = i + 1;
@@ -257,26 +309,30 @@ export const PatchTab = ({
           </div>
         </GlassCard>
       </div>
+      )}
 
-      {/* Liste de Patch & Edition / Gestion des Groupes */}
-      <div className="col-span-4 flex flex-col h-full gap-4">
-        {/* Sélecteur d'onglets internes */}
+      {showSidePanel && (
+      <div className={`${sideCol} flex flex-col h-full gap-4 min-h-0`}>
+        {showSubTabSwitch && (
         <div className="flex bg-slate-900/50 p-1 rounded-xl border border-white/5 gap-1">
-          <button 
+          <button
+            type="button"
             onClick={() => setActiveSubTab('fixtures')}
             className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${activeSubTab === 'fixtures' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Projecteurs
           </button>
-          <button 
+          <button
+            type="button"
             onClick={() => setActiveSubTab('groups')}
             className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${activeSubTab === 'groups' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Groupes
           </button>
         </div>
+        )}
 
-        {activeSubTab === 'fixtures' ? (
+        {effectiveSubTab === 'fixtures' ? (
           <GlassCard 
             title="Liste de Patch" 
             icon={Edit2} 
@@ -313,7 +369,7 @@ export const PatchTab = ({
                         <>
                           <option value="">Choisir un profil...</option>
                           {library.map(p => (
-                            <option key={p.id} value={p.id}>{p.manufacturer} - {p.model} ({p.channels.length} ch)</option>
+                            <option key={p.id} value={p.id}>{p.manufacturer} - {p.model} ({p.channels} ch)</option>
                           ))}
                         </>
                       ) : (
@@ -322,7 +378,9 @@ export const PatchTab = ({
                     </select>
 
                     {library.length === 0 && (
-                      <p className="text-[8px] text-rose-400 font-bold italic">Allez dans l'onglet 'Librairie' pour créer un profil d'abord.</p>
+                      <p className="text-[8px] text-rose-400 font-bold italic">
+                        Onglet Librairie → Nouveau profil, ou « Créer profils manquants depuis le patch ».
+                      </p>
                     )}
 
                     <div className="flex items-center gap-3">
@@ -354,15 +412,35 @@ export const PatchTab = ({
                   {/* Accent de couleur sur le côté */}
                   <div className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${getFixtureColor(fixture.type)}`} />
                   
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <FixtureProfilePhoto
+                      src={resolveFixtureProfileImageUrl(fixture, library)}
+                      alt={fixture.name}
+                      size="md"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={`${getFixtureLabelBg(fixture.type)} text-[10px] font-black px-1.5 py-0.5 rounded-md`}>ID {fixture.id}</span>
-                        <p className="text-xs font-bold uppercase tracking-wider">{fixture.name}</p>
+                        <p className="text-xs font-bold uppercase tracking-wider truncate">{fixture.name}</p>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-1">{fixture.manufacturer} {fixture.model}</p>
+                      {!hasLibraryProfileForFixture(fixture, library) && (
+                        <p className="text-[8px] text-amber-400/90 font-bold uppercase mt-1">
+                          Pas de profil librairie
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-1">
+                      {onEditLibraryProfile && (
+                        <button
+                          type="button"
+                          onClick={() => onEditLibraryProfile(fixture)}
+                          className="p-2 bg-slate-800 hover:bg-amber-500/15 border border-white/10 rounded-xl text-slate-500 hover:text-amber-300 transition-all"
+                          title="Créer ou éditer le profil librairie (canaux, photo)"
+                        >
+                          <Database className="w-3 h-3" />
+                        </button>
+                      )}
                       <div className="relative">
                         <button 
                           onClick={() => handleOpenPdf(fixture)}
@@ -532,16 +610,27 @@ export const PatchTab = ({
                             </button>
                           </div>
                           
-                          {/* COCHE AMBIANCE */}
                           <label className="flex items-center gap-2 cursor-pointer bg-purple-500/5 hover:bg-purple-500/10 px-2 py-1 rounded-md border border-purple-500/10 transition-all group/amb">
                             <input 
                               type="checkbox" 
                               className="w-3 h-3 accent-purple-500"
-                              checked={group.isAmbiance}
+                              checked={!!group.isAmbiance}
                               onChange={() => onToggleGroupAmbiance(group.id)}
                             />
                             <span className={`text-[8px] font-black uppercase tracking-tighter transition-colors ${group.isAmbiance ? 'text-purple-400' : 'text-slate-600 group-hover/amb:text-slate-400'}`}>
                               Ambiance
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer bg-blue-500/5 hover:bg-blue-500/10 px-2 py-1 rounded-md border border-blue-500/10 transition-all group/mvt">
+                            <input
+                              type="checkbox"
+                              className="w-3 h-3 accent-blue-500"
+                              checked={!!group.isMovement}
+                              onChange={() => onToggleGroupMovement(group.id)}
+                            />
+                            <span className={`text-[8px] font-black uppercase tracking-tighter transition-colors flex items-center gap-1 ${group.isMovement ? 'text-blue-400' : 'text-slate-600 group-hover/mvt:text-slate-400'}`}>
+                              <Move className="w-2.5 h-2.5" />
+                              Mouvement
                             </span>
                           </label>
                         </div>
@@ -591,6 +680,7 @@ export const PatchTab = ({
           </GlassCard>
         )}
       </div>
+      )}
     </div>
     </div>
   );

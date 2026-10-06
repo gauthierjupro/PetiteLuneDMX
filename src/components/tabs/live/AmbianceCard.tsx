@@ -4,6 +4,8 @@ import { IntensityControls } from './IntensityControls';
 import { ColorGrid } from './ColorGrid';
 import { MacroButtons } from './MacroButtons';
 import type { Fixture, Group, GroupIntensity, RgbColor } from '../../../types';
+import { fixtureChannelIndex } from '../../../utils/fixtureDmxChannels';
+import { loadFixtureProfilesFromStorage } from '../../../hooks/useFixtureProfiles';
 
 interface AmbianceCardProps {
   group: Group;
@@ -11,6 +13,7 @@ interface AmbianceCardProps {
   color: RgbColor;
   isAutoActive: boolean;
   isPulseActive: boolean;
+  activeMacro?: string | null;
   onIntensityChange: (type: 'dim' | 'str', val: number) => void;
   onColorChange: (r: number, g: number, b: number) => void;
   onMacro: (macro: string) => void;
@@ -22,6 +25,7 @@ interface AmbianceCardProps {
   isLinked?: boolean;
   channels: number[];
   fixtures: Fixture[];
+  beginnerMode?: boolean;
 }
 
 export const AmbianceCard = ({
@@ -30,6 +34,7 @@ export const AmbianceCard = ({
   color,
   isAutoActive,
   isPulseActive,
+  activeMacro = null,
   onIntensityChange,
   onColorChange,
   onMacro,
@@ -40,7 +45,8 @@ export const AmbianceCard = ({
   currentMasterIntensity,
   isLinked = false,
   channels,
-  fixtures
+  fixtures,
+  beginnerMode = false,
 }: AmbianceCardProps) => {
   // Calculer la valeur réelle du VU-mètre à partir du flux DMX
   const getLiveIntensity = () => {
@@ -52,15 +58,11 @@ export const AmbianceCard = ({
     
     if (!fixture) return 0;
     
-    const address = fixture.address - 1;
-    let dmxValue = 0;
-    
-    if (fixture.type === 'RGB') {
-      dmxValue = channels[address] || 0;
-    } else if (fixture.type === 'Moving Head') {
-      dmxValue = channels[address + 5] || 0;
-    } else if (fixture.type === 'Effect') {
-      dmxValue = channels[address] || 0;
+    const profiles = loadFixtureProfilesFromStorage();
+    const dimCh = fixtureChannelIndex(fixture, 'dimmer', profiles);
+    let dmxValue = dimCh != null ? channels[dimCh] || 0 : 0;
+    if (dmxValue === 0 && fixture.type === 'RGB') {
+      dmxValue = channels[fixture.address - 1] || 0;
     }
     
     return (dmxValue / 255) * 100;
@@ -118,6 +120,11 @@ export const AmbianceCard = ({
           <div className="flex gap-1">
             {isLinked && <span className="px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400/70 border border-cyan-500/20 text-[9px] font-black rounded">LECTURE SEULE (LIÉ)</span>}
             {!isLinked && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-black rounded tracking-widest animate-pulse">MODE MANUEL</span>}
+            {!group.isAmbiance && (
+              <span className="px-1.5 py-0.5 bg-slate-800 text-slate-400 border border-white/10 text-[8px] font-black rounded uppercase">
+                Sans flag Ambiance
+              </span>
+            )}
             {isPulseActive && <span className="px-1.5 py-0.5 bg-rose-500 text-[9px] font-black text-white rounded">PULSE</span>}
             {isAutoActive && <span className="px-1.5 py-0.5 bg-cyan-500 text-[9px] font-black text-black rounded">AUTO</span>}
           </div>
@@ -141,11 +148,13 @@ export const AmbianceCard = ({
                 userColors={userColors}
                 buttonSize="w-10 h-10"
               />
-              <MacroButtons 
+              <MacroButtons
                 onMacro={onMacro}
                 isAutoActive={isAutoActive}
                 isPulseActive={isPulseActive}
-                buttonHeight="h-10"
+                activeMacro={activeMacro}
+                beginnerMode={beginnerMode}
+                buttonHeight="h-9"
                 buttonWidth="w-[88px]"
               />
             </div>

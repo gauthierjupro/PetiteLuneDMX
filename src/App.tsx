@@ -3,21 +3,23 @@ import { invoke } from '@tauri-apps/api/tauri';
 import {
   Zap,
   Settings as SettingsIcon,
-  Layout,
   Edit2,
   Maximize2,
-  Box,
   Database,
-  Sliders,
   Info,
+  Sparkles,
 } from 'lucide-react';
 
 import { LiveTab } from './components/tabs/LiveTab';
-import { FixturesTab } from './components/tabs/FixturesTab';
-import { PatchTab } from './components/tabs/PatchTab';
-import { DmxConsoleTab } from './components/tabs/DmxConsoleTab';
-import { StageTab } from './components/tabs/StageTab';
-import { Stage3DTab } from './components/tabs/Stage3DTab';
+import { PatchDmxTab } from './components/tabs/PatchDmxTab';
+import { findProfileForFixture } from './utils/fixtureProfileImage';
+import { loadFixtureProfilesFromStorage } from './hooks/useFixtureProfiles';
+import { applyFixtureDmxAction } from './utils/fixtureDmxChannels';
+import {
+  createProfileFromFixture,
+  openFixtureProfileEditorDraft,
+} from './utils/fixtureProfileFromPatch';
+import { StageSceneTab } from './components/tabs/StageSceneTab';
 import { FixtureEditorTab } from './components/tabs/FixtureEditorTab';
 import { SettingsTab } from './components/tabs/SettingsTab';
 import { AboutModal } from './components/ui/AboutModal';
@@ -31,17 +33,18 @@ import { useLiveEngine } from './hooks/useLiveEngine';
 import { useAppPreferences } from './hooks/useAppPreferences';
 import { useWebMidi } from './hooks/useWebMidi';
 import { FirstShowWizard } from './components/ui/FirstShowWizard';
+import { loadAutoLiveState } from './utils/autoLiveConfig';
+import { AutoLiveBackgroundBadge } from './components/live/AutoLiveBackgroundBadge';
+import type { AutoLiveState } from './types/autoLive';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 const TABS = [
   { id: 'live' as const, label: 'Live', icon: Zap },
-  { id: 'fixtures' as const, label: 'Projecteurs', icon: Layout },
-  { id: 'stage' as const, label: 'Plateau', icon: Maximize2 },
-  { id: 'stage3d' as const, label: 'Vue 3D', icon: Box },
+  { id: 'autoLive' as const, label: 'Auto Live', icon: Sparkles },
+  { id: 'stage' as const, label: 'Scène', icon: Maximize2 },
   { id: 'editor' as const, label: 'Librairie', icon: Database },
-  { id: 'console' as const, label: 'Vue DMX', icon: Sliders },
-  { id: 'patch' as const, label: 'Patch', icon: Edit2 },
+  { id: 'patch' as const, label: 'Patch & DMX', icon: Edit2 },
   { id: 'settings' as const, label: 'Réglages', icon: SettingsIcon },
 ];
 
@@ -64,6 +67,19 @@ function App() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [selectedFixtures, setSelectedFixtures] = useState<number[]>([]);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [openCalibrationFromScene, setOpenCalibrationFromScene] = useState(false);
+  const [autoLiveState, setAutoLiveState] = useState<AutoLiveState>(() => loadAutoLiveState());
+
+  const liveSessionMounted =
+    activeTab === 'live' ||
+    activeTab === 'autoLive' ||
+    autoLiveState.enabled;
+
+  const liveTabHeadless =
+    liveSessionMounted && activeTab !== 'live' && activeTab !== 'autoLive';
+
+  const showAutoLiveBackgroundBadge =
+    autoLiveState.enabled && liveTabHeadless;
 
   useWebMidi(prefs.midiEnabled, activeTab === 'live', (val) => {
     live.setMasterDimmer(val);
@@ -78,13 +94,11 @@ function App() {
   };
 
   const handleMasterStrobe = async (val: number) => {
+    const profiles = loadFixtureProfilesFromStorage();
     for (const fixture of patch.fixtures) {
-      const start = fixture.address - 1;
-      if (fixture.type === 'RGB') {
-        await settings.updateDmx(start + 4, val);
-      } else if (fixture.type === 'Moving Head') {
-        await settings.updateDmx(start + 8, val);
-      }
+      applyFixtureDmxAction(fixture, 'strobe', val, (ch, v) => {
+        void settings.updateDmx(ch, v);
+      }, profiles);
     }
   };
 
@@ -93,23 +107,13 @@ function App() {
     action: FixtureControlAction,
     value: number | RgbColor
   ) => {
+    const profiles = loadFixtureProfilesFromStorage();
     for (const fixtureId of fixtureIds) {
       const fixture = patch.fixtures.find((f) => f.id === fixtureId);
       if (!fixture) continue;
-      const start = fixture.address - 1;
-
-      if (action === 'strobe' && typeof value === 'number') {
-        if (fixture.type === 'RGB') await settings.updateDmx(start + 4, value);
-        else if (fixture.type === 'Moving Head') await settings.updateDmx(start + 8, value);
-      } else if (action === 'color' && fixture.type === 'RGB' && typeof value === 'object') {
-        await settings.updateDmx(start + 1, value.r);
-        await settings.updateDmx(start + 2, value.g);
-        await settings.updateDmx(start + 3, value.b);
-      } else if (action === 'pan' && fixture.type === 'Moving Head' && typeof value === 'number') {
-        await settings.updateDmx(start, value);
-      } else if (action === 'tilt' && fixture.type === 'Moving Head' && typeof value === 'number') {
-        await settings.updateDmx(start + 2, value);
-      }
+      applyFixtureDmxAction(fixture, action, value, (ch, v) => {
+        void settings.updateDmx(ch, v);
+      }, profiles);
     }
   };
 
@@ -121,18 +125,18 @@ function App() {
     const group = patch.groups.find((g) => g.id === groupId);
     if (!group || action === 'dimmer') return;
 
+    const profiles = loadFixtureProfilesFromStorage();
     for (const fixtureId of group.fixtureIds) {
       const fixture = patch.fixtures.find((f) => f.id === fixtureId);
       if (!fixture) continue;
-      const start = fixture.address - 1;
-
       if (action === 'strobe' && typeof value === 'number') {
-        if (fixture.type === 'RGB') await settings.updateDmx(start + 4, value);
-        else if (fixture.type === 'Moving Head') await settings.updateDmx(start + 8, value);
-      } else if (action === 'color' && fixture.type === 'RGB' && typeof value === 'object') {
-        await settings.updateDmx(start + 1, value.r);
-        await settings.updateDmx(start + 2, value.g);
-        await settings.updateDmx(start + 3, value.b);
+        applyFixtureDmxAction(fixture, 'strobe', value, (ch, v) => {
+          void settings.updateDmx(ch, v);
+        }, profiles);
+      } else if (action === 'color' && typeof value === 'object') {
+        applyFixtureDmxAction(fixture, 'color', value, (ch, v) => {
+          void settings.updateDmx(ch, v);
+        }, profiles);
       }
     }
   };
@@ -171,20 +175,20 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070a] text-slate-200 p-8 font-sans selection:bg-cyan-500/30 flex flex-col">
+    <div className="min-h-screen bg-[var(--pl-bg)] text-[var(--pl-text)] p-8 font-sans selection:bg-cyan-500/30 flex flex-col">
       <header className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-6">
           <div>
-            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-white to-slate-500 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-[var(--pl-title-from)] to-[var(--pl-title-to)] bg-clip-text text-transparent">
               PETITELUNE<span className="text-cyan-500">DMX</span>
             </h1>
             <div className="flex items-center gap-3 mt-1">
-              <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">
+              <p className="text-[var(--pl-muted)] text-sm font-medium uppercase tracking-widest">
                 Pro Lighting Control v{APP_VERSION}
               </p>
               <button
                 onClick={() => setIsAboutModalOpen(true)}
-                className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-slate-500 hover:text-cyan-400 transition-all active:scale-90"
+                className="p-1.5 bg-[var(--pl-hover)] hover:opacity-90 border border-[var(--pl-border)] rounded-lg text-[var(--pl-muted)] hover:text-cyan-400 transition-all active:scale-90"
                 title="Informations sur l'application"
               >
                 <Info className="w-3.5 h-3.5" />
@@ -193,7 +197,7 @@ function App() {
           </div>
         </div>
 
-        <nav className="flex bg-slate-900/50 backdrop-blur-md p-1.5 rounded-2xl border border-white/5 gap-1">
+        <nav className="flex bg-[var(--pl-panel)] backdrop-blur-md p-1.5 rounded-2xl border border-[var(--pl-border)] gap-1">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -201,7 +205,7 @@ function App() {
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
                 activeTab === tab.id
                   ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent'
+                  : 'text-[var(--pl-muted)] hover:text-[var(--pl-text)] hover:bg-[var(--pl-hover)] border border-transparent'
               }`}
             >
               <tab.icon className="w-4 h-4" />
@@ -210,20 +214,31 @@ function App() {
           ))}
         </nav>
 
-        <ConnectionStatus
-          isConnected={settings.isConnected}
-          port={settings.selectedPort}
-          connectionError={settings.connectionError}
-          actualHz={settings.actualHz}
-          targetHz={settings.targetHz}
-          latencyMs={settings.latencyMs}
-          onReconnect={settings.handleForceReconnect}
-        />
+        <div className="flex items-center gap-3">
+          {showAutoLiveBackgroundBadge && (
+            <AutoLiveBackgroundBadge onOpenAutoLive={() => setActiveTab('autoLive')} />
+          )}
+          <ConnectionStatus
+            isConnected={settings.isConnected}
+            port={settings.selectedPort}
+            connectionError={settings.connectionError}
+            actualHz={settings.actualHz}
+            targetHz={settings.targetHz}
+            latencyMs={settings.latencyMs}
+            onReconnect={settings.handleForceReconnect}
+          />
+        </div>
       </header>
 
       <main className="flex-1">
-        {activeTab === 'live' && (
+        {liveSessionMounted && (
           <LiveTab
+            headless={liveTabHeadless}
+            variant={
+              activeTab === 'autoLive' ? 'auto' : 'manual'
+            }
+            autoLiveState={autoLiveState}
+            setAutoLiveState={setAutoLiveState}
             fixtures={patch.fixtures}
             channels={settings.channels}
             pan={live.pan}
@@ -249,6 +264,10 @@ function App() {
             setGroupPan={live.setGroupPan}
             groupTilt={live.groupTilt}
             setGroupTilt={live.setGroupTilt}
+            groupMovementCenters={live.groupMovementCenters}
+            setGroupMovementCenters={live.setGroupMovementCenters}
+            groupMovementCenterLinked={live.groupMovementCenterLinked}
+            setGroupMovementCenterLinked={live.setGroupMovementCenterLinked}
             groupAutoColorActive={live.groupAutoColorActive}
             setGroupAutoColorActive={live.setGroupAutoColorActive}
             groupAutoGoboActive={live.groupAutoGoboActive}
@@ -257,10 +276,16 @@ function App() {
             setGroupGobos={live.setGroupGobos}
             groupPositions={live.groupPositions}
             setGroupPositions={live.setGroupPositions}
-            groupMovementPresets={live.groupMovementPresets}
-            setGroupMovementPresets={live.setGroupMovementPresets}
+            groupCenterPositions={live.groupCenterPositions}
+            setGroupCenterPositions={live.setGroupCenterPositions}
+            groupPositionMemoryMode={live.groupPositionMemoryMode}
+            setGroupPositionMemoryMode={live.setGroupPositionMemoryMode}
+            groupQuickMovementSaves={live.groupQuickMovementSaves}
+            setGroupQuickMovementSaves={live.setGroupQuickMovementSaves}
             groupCustomTrajectories={live.groupCustomTrajectories}
             setGroupCustomTrajectories={live.setGroupCustomTrajectories}
+            groupCustomMovementSlotLinks={live.groupCustomMovementSlotLinks}
+            setGroupCustomMovementSlotLinks={live.setGroupCustomMovementSlotLinks}
             fixtureCalibration={live.fixtureCalibration}
             setFixtureCalibration={live.setFixtureCalibration}
             liveGroupPositions={live.liveGroupPositions}
@@ -274,26 +299,34 @@ function App() {
             setGroupPulseActive={live.setGroupPulseActive}
             bpm={live.bpm}
             setBpm={live.setBpm}
-          />
-        )}
-
-        {activeTab === 'fixtures' && (
-          <FixturesTab
-            fixtures={patch.fixtures}
-            selectedFixture={selectedFixture}
-            setSelectedFixture={setSelectedFixture}
-            getFixtureById={patch.getFixtureById}
-            channels={settings.channels}
-            updateDmx={settings.updateDmx}
-            onIdentify={handleIdentify}
+            openCalibrationWhenActive={openCalibrationFromScene}
+            onCalibrationActivated={() => setOpenCalibrationFromScene(false)}
+            onGoToPatch={() => setActiveTab('patch')}
+            onOpenAutoLive={() => setActiveTab('autoLive')}
+            autoLiveActiveInBackground={
+              autoLiveState.enabled && activeTab === 'live'
+            }
+            dmxConnected={settings.isConnected}
+            dmxPort={settings.selectedPort}
+            dmxConnectionError={settings.connectionError}
+            onDmxReconnect={settings.handleForceReconnect}
+            confirmBlackout={prefs.liveConfirmBlackout}
+            liveCompact={prefs.liveCompact}
+            liveProfile={prefs.liveProfile}
+            autoLiveEasyMode={prefs.autoLiveEasyMode}
+            onAutoLiveEasyModeChange={prefs.setAutoLiveEasyMode}
           />
         )}
 
         {activeTab === 'patch' && (
-          <PatchTab
+          <PatchDmxTab
             fixtures={patch.fixtures}
             groups={patch.groups}
             channels={settings.channels}
+            selectedFixture={selectedFixture}
+            setSelectedFixture={setSelectedFixture}
+            getFixtureById={patch.getFixtureById}
+            updateDmx={settings.updateDmx}
             onUpdateAddress={patch.handleUpdateAddress}
             onAddFixture={patch.handleAddFixture}
             onDeleteFixture={patch.handleDeleteFixture}
@@ -303,27 +336,36 @@ function App() {
             onUpdateGroupFixtures={patch.handleUpdateGroupFixtures}
             onRenameGroup={patch.handleRenameGroup}
             onToggleGroupAmbiance={patch.handleToggleGroupAmbiance}
+            onToggleGroupMovement={patch.handleToggleGroupMovement}
+            onEditLibraryProfile={(fixture) => {
+              const library = loadFixtureProfilesFromStorage();
+              const existing = findProfileForFixture(fixture, library);
+              openFixtureProfileEditorDraft(
+                existing ?? createProfileFromFixture(fixture)
+              );
+              setActiveTab('editor');
+            }}
           />
         )}
 
-        {activeTab === 'console' && (
-          <DmxConsoleTab
+        {(activeTab === 'stage' || activeTab === 'stage3d') && (
+          <StageSceneTab
             fixtures={patch.fixtures}
             channels={settings.channels}
-            updateDmx={settings.updateDmx}
-            onIdentify={handleIdentify}
+            groups={patch.groups}
+            groupColors={live.groupColors}
+            initialView={activeTab === 'stage3d' ? '3d' : 'plan'}
+            onIdentifyFixture={handleIdentify}
+            onOpenCalibration={() => {
+              setOpenCalibrationFromScene(true);
+              setActiveTab('live');
+            }}
           />
         )}
 
-        {activeTab === 'stage' && (
-          <StageTab fixtures={patch.fixtures} channels={settings.channels} />
+        {activeTab === 'editor' && (
+          <FixtureEditorTab patchedFixtures={patch.fixtures} />
         )}
-
-        {activeTab === 'stage3d' && (
-          <Stage3DTab fixtures={patch.fixtures} channels={settings.channels} />
-        )}
-
-        {activeTab === 'editor' && <FixtureEditorTab />}
 
         {activeTab === 'settings' && (
           <SettingsTab
@@ -343,6 +385,12 @@ function App() {
             onDensityChange={prefs.setDensity}
             midiEnabled={prefs.midiEnabled}
             onMidiEnabledChange={prefs.setMidiEnabled}
+            liveConfirmBlackout={prefs.liveConfirmBlackout}
+            onLiveConfirmBlackoutChange={prefs.setLiveConfirmBlackout}
+            liveCompact={prefs.liveCompact}
+            onLiveCompactChange={prefs.setLiveCompact}
+            liveProfile={prefs.liveProfile}
+            onLiveProfileChange={prefs.setLiveProfile}
           />
         )}
       </main>

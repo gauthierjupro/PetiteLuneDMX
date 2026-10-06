@@ -7,26 +7,41 @@ interface CalibrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   fixtures: Fixture[];
+  /** Si défini, n’affiche que ces projecteurs (ex. lyres d’un groupe). */
+  fixtureIdsFilter?: number[] | null;
+  filterGroupName?: string | null;
   calibration: Record<number, CalibrationSettings>;
   onUpdateCalibration: (fixtureId: number, settings: Partial<CalibrationSettings>) => void;
   onReset: (fixtureId: number) => void;
 }
 
-export const CalibrationModal = ({ 
-  isOpen, 
-  onClose, 
-  fixtures, 
-  calibration, 
+export const CalibrationModal = ({
+  isOpen,
+  onClose,
+  fixtures,
+  fixtureIdsFilter = null,
+  filterGroupName = null,
+  calibration,
   onUpdateCalibration,
-  onReset
+  onReset,
 }: CalibrationModalProps) => {
-  const movingHeads = fixtures.filter(f => f.type === 'Moving Head');
+  const movingHeads = fixtures.filter((f) => {
+    if (f.type !== 'Moving Head') return false;
+    if (fixtureIdsFilter && fixtureIdsFilter.length > 0) {
+      return fixtureIdsFilter.includes(f.id);
+    }
+    return true;
+  });
 
   return (
     <Modal 
       isOpen={isOpen} 
       onClose={onClose} 
-      title="CALIBRATION DES LYRES"
+      title={
+        filterGroupName
+          ? `Calibration — ${filterGroupName}`
+          : 'CALIBRATION DES LYRES'
+      }
       maxWidth="max-w-7xl"
     >
       <div className="space-y-10 max-h-[80vh] overflow-y-auto pr-8 pl-4 py-4 custom-scrollbar">

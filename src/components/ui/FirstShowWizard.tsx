@@ -1,28 +1,38 @@
 import React, { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Zap, Edit2, Users } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Zap, Edit2, Users, Radio } from 'lucide-react';
+import type { TabType } from '../../types';
 
 const STORAGE_KEY = 'pldmx_onboarding_done';
 
 const STEPS = [
   {
     title: 'Patch vos machines',
-    body: 'Onglet Patch : ajoutez vos projecteurs, adresses DMX et vérifiez le moniteur 512 canaux.',
+    body: 'Onglet Patch & DMX → Parc : ajoutez vos projecteurs et adresses. Moniteur 512 dans le même onglet.',
     icon: Edit2,
+    action: 'patch' as const,
   },
   {
     title: 'Créez des groupes',
-    body: 'Toujours dans Patch → Groupes : regroupez les fixtures pour Live (ambiance, lyres…).',
+    body: 'Patch & DMX → Groupes : regroupez les fixtures. Cochez « Ambiance » pour les PAR / washes utilisés en Live.',
     icon: Users,
+    action: null,
   },
   {
-    title: 'Passez en Live',
-    body: 'Master, ambiances, cues (Entrée = GO), raccourcis B blackout / T tap tempo. Bon show !',
+    title: 'Auto Live (recommandé)',
+    body: 'Onglet Auto Live : activez le pilote musical, choisissez un profil (Acoustic, Club…). Idéal si vous débutez.',
+    icon: Radio,
+    action: 'autoLive' as const,
+  },
+  {
+    title: 'Scènes manuelles',
+    body: 'Onglet Live : le master règle la force globale. Scènes 1–8 = looks mémorisés (bouton Enregistrer). Blackout = tout éteindre.',
     icon: Zap,
+    action: 'live' as const,
   },
 ] as const;
 
 interface FirstShowWizardProps {
-  onGoToTab: (tab: 'patch' | 'live') => void;
+  onGoToTab: (tab: TabType) => void;
 }
 
 export function FirstShowWizard({ onGoToTab }: FirstShowWizardProps) {
@@ -37,6 +47,13 @@ export function FirstShowWizard({ onGoToTab }: FirstShowWizardProps) {
   const finish = () => {
     localStorage.setItem(STORAGE_KEY, '1');
     setOpen(false);
+  };
+
+  const runAction = () => {
+    if (current.action) {
+      onGoToTab(current.action);
+      if (current.action === 'live') finish();
+    }
   };
 
   return (
@@ -68,7 +85,7 @@ export function FirstShowWizard({ onGoToTab }: FirstShowWizardProps) {
         <p className="text-sm text-slate-400 leading-relaxed mb-6">{current.body}</p>
 
         <div className="flex gap-2 mb-4">
-          {step === 0 && (
+          {current.action === 'patch' && (
             <button
               type="button"
               onClick={() => {
@@ -77,16 +94,25 @@ export function FirstShowWizard({ onGoToTab }: FirstShowWizardProps) {
               }}
               className="flex-1 py-2.5 bg-cyan-500 text-black rounded-xl text-xs font-black uppercase"
             >
-              Ouvrir Patch
+              Ouvrir Patch & DMX
             </button>
           )}
-          {step === 2 && (
+          {current.action === 'autoLive' && (
             <button
               type="button"
               onClick={() => {
-                onGoToTab('live');
-                finish();
+                onGoToTab('autoLive');
+                setStep(3);
               }}
+              className="flex-1 py-2.5 bg-cyan-500 text-black rounded-xl text-xs font-black uppercase"
+            >
+              Ouvrir Auto Live
+            </button>
+          )}
+          {current.action === 'live' && (
+            <button
+              type="button"
+              onClick={runAction}
               className="flex-1 py-2.5 bg-cyan-500 text-black rounded-xl text-xs font-black uppercase"
             >
               Aller en Live

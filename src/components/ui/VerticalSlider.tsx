@@ -53,9 +53,9 @@ export const VerticalSlider = ({
         <div className={`${height} w-6 relative flex items-center justify-center`}>
           
           {/* Rail visuel */}
-          <div className="h-full w-1.5 bg-slate-900 rounded-full relative overflow-hidden">
-            <div 
-              className={`absolute bottom-0 w-full ${color} transition-all duration-75 shadow-[0_0_10px_rgba(34,211,238,0.3)]`}
+          <div className="pl-fader-rail h-full w-1.5">
+            <div
+              className={`pl-fader-rail-fill pl-fader-fill ${color === 'bg-cyan-500' ? 'bg-[var(--pl-fader-fill)]' : color}`}
               style={{ height: `${percentage}%` }}
             />
           </div>
@@ -76,17 +76,21 @@ export const VerticalSlider = ({
           />
 
           {/* Le Bouton (Handle) visuel */}
-          <div 
-            className="absolute left-1/2 -translate-x-1/2 w-5 h-3 bg-white border border-white/20 rounded-sm shadow-xl pointer-events-none z-10 flex flex-col items-center justify-center gap-0.5 transition-all duration-75"
+          <div
+            className="pl-fader-handle z-10 flex flex-col items-center justify-center gap-0.5 transition-all duration-75"
             style={{ bottom: `calc(${percentage}% - 6px)` }}
           >
-            <div className="w-3 h-[1px] bg-slate-400" />
-            <div className="w-3 h-[1px] bg-slate-400" />
+            <div className="w-3 h-[1px] bg-[var(--pl-muted)]" />
+            <div className="w-3 h-[1px] bg-[var(--pl-muted)]" />
           </div>
         </div>
         
-        {label && <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">{label}</span>}
-        <span className="text-[9px] font-mono text-cyan-400 font-bold">{value}</span>
+        {label && (
+          <span className="text-[8px] font-black text-[var(--pl-muted)] uppercase tracking-tighter">
+            {label}
+          </span>
+        )}
+        <span className="text-[9px] font-mono text-cyan-500 font-bold">{value}</span>
       </div>
 
       <ValuePromptModal

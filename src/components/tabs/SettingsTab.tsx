@@ -3,8 +3,9 @@ import { Settings as SettingsIcon, Download, Upload, FolderOpen } from 'lucide-r
 import { GlassCard } from '../ui/GlassCard';
 import { exportProjectFile, importProjectFile } from '../../utils/projectIo';
 import { PROJECT_EXTENSION } from '../../utils/projectFile';
-import type { AppTheme, UiDensity } from '../../hooks/useAppPreferences';
+import type { AppTheme, LiveProfile, UiDensity } from '../../hooks/useAppPreferences';
 import { resetFirstShowWizard } from '../ui/FirstShowWizard';
+import { resetLiveBeginnerBanner } from './live/LiveBeginnerBanner';
 
 interface SettingsTabProps {
   selectedPort: string;
@@ -23,6 +24,12 @@ interface SettingsTabProps {
   onDensityChange: (d: UiDensity) => void;
   midiEnabled: boolean;
   onMidiEnabledChange: (enabled: boolean) => void;
+  liveConfirmBlackout: boolean;
+  onLiveConfirmBlackoutChange: (enabled: boolean) => void;
+  liveCompact: boolean;
+  onLiveCompactChange: (enabled: boolean) => void;
+  liveProfile: LiveProfile;
+  onLiveProfileChange: (profile: LiveProfile) => void;
 }
 
 export function SettingsTab({
@@ -42,6 +49,12 @@ export function SettingsTab({
   onDensityChange,
   midiEnabled,
   onMidiEnabledChange,
+  liveConfirmBlackout,
+  onLiveConfirmBlackoutChange,
+  liveCompact,
+  onLiveCompactChange,
+  liveProfile,
+  onLiveProfileChange,
 }: SettingsTabProps) {
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectMessage, setProjectMessage] = useState<string | null>(null);
@@ -94,15 +107,15 @@ export function SettingsTab({
     <div className="max-w-2xl mx-auto space-y-6">
       <GlassCard title="Configuration Système" icon={SettingsIcon}>
         <div className="space-y-6">
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
+          <div className="flex justify-between items-center pl-inset">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">Interface DMX</p>
-              <p className="text-[10px] text-slate-500">Enttec Open DMX / FT232R USB UART</p>
+              <p className="text-[10px] text-[var(--pl-muted)]">Enttec Open DMX / FT232R USB UART</p>
             </div>
             <select
               value={selectedPort}
               onChange={(e) => onPortChange(e.target.value)}
-              className="bg-slate-800 border border-white/10 rounded-lg text-xs p-2 focus:outline-none focus:border-cyan-400 cursor-pointer"
+              className="pl-select"
             >
               <option value="COM1">COM1</option>
               <option value="COM2">COM2</option>
@@ -112,10 +125,10 @@ export function SettingsTab({
             </select>
           </div>
 
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
+          <div className="flex justify-between items-center pl-inset">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">État connexion</p>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-[var(--pl-muted)]">
                 Port {selectedPort}
                 {isConnected ? ' · moteur actif' : ' · hors ligne'}
               </p>
@@ -130,53 +143,49 @@ export function SettingsTab({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-              <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">
+            <div className="pl-inset">
+              <p className="text-[10px] font-black uppercase text-[var(--pl-muted)] tracking-widest mb-1">
                 Fréquence réelle
               </p>
               <p className="text-cyan-400 font-mono text-sm font-bold tabular-nums">
                 {isConnected && actualHz > 0 ? `${actualHz.toFixed(1)} Hz` : '—'}
               </p>
-              <p className="text-[9px] text-slate-600 mt-1">Cible {targetHz} Hz</p>
+              <p className="text-[9px] text-[var(--pl-muted)] mt-1 opacity-80">Cible {targetHz} Hz</p>
             </div>
-            <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-              <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">
+            <div className="pl-inset">
+              <p className="text-[10px] font-black uppercase text-[var(--pl-muted)] tracking-widest mb-1">
                 Latence envoi
               </p>
               <p className="text-cyan-400 font-mono text-sm font-bold tabular-nums">
                 {isConnected ? `${latencyMs < 10 ? latencyMs.toFixed(1) : latencyMs.toFixed(0)} ms` : '—'}
               </p>
-              <p className="text-[9px] text-slate-600 mt-1">Break + write série</p>
+              <p className="text-[9px] text-[var(--pl-muted)] mt-1 opacity-80">Break + write série</p>
             </div>
           </div>
 
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
+          <div className="flex justify-between items-center pl-inset">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">
                 Blackout à la déconnexion
               </p>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-[var(--pl-muted)]">
                 Extinction de l&apos;univers si le port série est perdu (sécurité scène)
               </p>
             </div>
             <button
               type="button"
               onClick={() => onBlackoutOnDisconnectChange(!blackoutOnDisconnect)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
-                blackoutOnDisconnect
-                  ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
-                  : 'bg-slate-800 border-white/10 text-slate-400'
-              }`}
+              className={`pl-toggle ${blackoutOnDisconnect ? 'pl-toggle--on' : 'pl-toggle--off'}`}
             >
               {blackoutOnDisconnect ? 'Activé' : 'Désactivé'}
             </button>
           </div>
 
           {!isConnected && connectionError && (
-            <div className="p-4 bg-red-500/10 rounded-2xl border border-red-500/30 text-red-300 text-xs">
+            <div className="p-4 bg-red-500/10 rounded-2xl border border-red-500/30 text-xs pl-alert-error">
               <p className="font-bold uppercase tracking-wider mb-1">Dernière erreur DMX</p>
-              <p className="text-red-200/80 break-words">{connectionError}</p>
-              <p className="text-[10px] text-red-400/70 mt-2">
+              <p className="opacity-90 break-words">{connectionError}</p>
+              <p className="text-[10px] opacity-75 mt-2">
                 Reconnexion automatique toutes les secondes — ou cliquez le bouton refresh
                 dans l&apos;en-tête.
               </p>
@@ -187,53 +196,91 @@ export function SettingsTab({
 
       <GlassCard title="Apparence & Live" icon={SettingsIcon}>
         <div className="space-y-4">
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
+          <div className="flex justify-between items-center pl-inset">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">Thème</p>
-              <p className="text-[10px] text-slate-500">Clair ou sombre (variables CSS)</p>
+              <p className="text-[10px] text-[var(--pl-muted)]">Clair ou sombre (variables CSS)</p>
             </div>
             <select
               value={theme}
               onChange={(e) => onThemeChange(e.target.value as AppTheme)}
-              className="bg-slate-800 border border-white/10 rounded-lg text-xs p-2"
+              className="pl-select"
             >
               <option value="dark">Sombre</option>
               <option value="light">Clair</option>
             </select>
           </div>
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
+          <div className="flex justify-between items-center pl-inset">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">Densité UI</p>
-              <p className="text-[10px] text-slate-500">Compact pour petits écrans</p>
+              <p className="text-[10px] text-[var(--pl-muted)]">Compact pour petits écrans</p>
             </div>
             <select
               value={density}
               onChange={(e) => onDensityChange(e.target.value as UiDensity)}
-              className="bg-slate-800 border border-white/10 rounded-lg text-xs p-2"
+              className="pl-select"
             >
               <option value="comfortable">Confort</option>
               <option value="compact">Compact</option>
             </select>
           </div>
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
+          <div className="flex justify-between items-center pl-inset">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider">Profil Live</p>
+              <p className="text-[10px] text-[var(--pl-muted)]">
+                Débutant : Live + Auto Live simplifiés · Régie : tous les paramètres
+              </p>
+            </div>
+            <select
+              value={liveProfile}
+              onChange={(e) => onLiveProfileChange(e.target.value as LiveProfile)}
+              className="pl-select"
+            >
+              <option value="beginner">Débutant</option>
+              <option value="regie">Régie</option>
+            </select>
+          </div>
+          <div className="flex justify-between items-center pl-inset">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider">Live compact</p>
+              <p className="text-[10px] text-[var(--pl-muted)]">Moins de marges · 2 colonnes sur grands écrans uniquement</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onLiveCompactChange(!liveCompact)}
+              className={`pl-toggle ${liveCompact ? 'pl-toggle--on' : 'pl-toggle--off'}`}
+            >
+              {liveCompact ? 'Activé' : 'Désactivé'}
+            </button>
+          </div>
+          <div className="flex justify-between items-center pl-inset">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider">Confirmer le blackout Live</p>
+              <p className="text-[10px] text-[var(--pl-muted)]">Dialogue avant le bouton / raccourci B</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onLiveConfirmBlackoutChange(!liveConfirmBlackout)}
+              className={`pl-toggle ${liveConfirmBlackout ? 'pl-toggle--on' : 'pl-toggle--off'}`}
+            >
+              {liveConfirmBlackout ? 'Activé' : 'Désactivé'}
+            </button>
+          </div>
+          <div className="flex justify-between items-center pl-inset">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">Entrée MIDI (Web MIDI)</p>
-              <p className="text-[10px] text-slate-500">CC7 → master dimmer (onglet Live)</p>
+              <p className="text-[10px] text-[var(--pl-muted)]">CC7 → master dimmer (onglet Live)</p>
             </div>
             <button
               type="button"
               onClick={() => onMidiEnabledChange(!midiEnabled)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase border ${
-                midiEnabled
-                  ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
-                  : 'bg-slate-800 border-white/10 text-slate-400'
-              }`}
+              className={`pl-toggle ${midiEnabled ? 'pl-toggle--on' : 'pl-toggle--off'}`}
             >
               {midiEnabled ? 'Activé' : 'Désactivé'}
             </button>
           </div>
-          <div className="p-4 bg-white/5 rounded-2xl border border-white/5 text-[10px] text-slate-400 space-y-1">
-            <p className="font-black uppercase text-slate-500 tracking-widest mb-2">
+          <div className="pl-inset text-[10px] text-[var(--pl-muted)] space-y-1">
+            <p className="font-black uppercase tracking-widest mb-2">
               Raccourcis Live
             </p>
             <p>
@@ -242,15 +289,16 @@ export function SettingsTab({
               <span className="text-cyan-400 font-mono">Entrée</span> GO cue ·{' '}
               <span className="text-cyan-400 font-mono">Ctrl+Z</span> undo preset
             </p>
-            <p className="text-slate-600">Voir doc/KEYBOARD.md</p>
+            <p className="opacity-80">Voir doc/KEYBOARD.md</p>
           </div>
           <button
             type="button"
             onClick={() => {
               resetFirstShowWizard();
+              resetLiveBeginnerBanner();
               window.location.reload();
             }}
-            className="w-full py-2 text-[10px] font-black uppercase text-slate-500 hover:text-cyan-400 border border-white/10 rounded-xl"
+            className="w-full py-2 text-[10px] font-black uppercase text-[var(--pl-muted)] hover:text-cyan-500 border border-[var(--pl-border)] rounded-xl pl-btn-secondary"
           >
             Réafficher le guide premier show
           </button>
@@ -280,7 +328,7 @@ export function SettingsTab({
               type="button"
               disabled={projectBusy}
               onClick={handleImport}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider pl-btn-secondary disabled:opacity-50"
             >
               <Upload className="w-4 h-4" />
               Importer

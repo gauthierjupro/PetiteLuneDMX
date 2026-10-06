@@ -7,13 +7,24 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   maxWidth?: string;
+  /** Au-dessus des modales principales (ex. confirmation dans le générateur de mouvements). */
+  layer?: 'default' | 'stack';
 }
 
-export const Modal = ({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }: ModalProps) => {
+export const Modal = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  maxWidth = 'max-w-md',
+  layer = 'default',
+}: ModalProps) => {
   if (!isOpen) return null;
 
+  const zClass = layer === 'stack' ? 'z-[320]' : 'z-[200]';
+
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 ${zClass} flex items-center justify-center p-4`}>
       {/* Overlay */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"

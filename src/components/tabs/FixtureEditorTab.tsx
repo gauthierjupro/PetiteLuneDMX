@@ -2,7 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { save } from '@tauri-apps/api/dialog';
 import { GlassCard } from '../ui/GlassCard';
-import { Plus, Trash2, Save, Box, Sliders, Info, PlusCircle, Download, Upload } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Save,
+  Box,
+  Sliders,
+  PlusCircle,
+  Download,
+  Upload,
+  ImagePlus,
+} from 'lucide-react';
+import { FixtureProfilePhoto } from '../ui/FixtureProfilePhoto';
+import { FixtureProfilePhotoImport } from '../ui/FixtureProfilePhotoImport';
+import {
+  isAllowedProfileImageUrl,
+  notifyFixtureProfilesUpdated,
+} from '../../utils/fixtureProfileImage';
 import type { ChannelDef, ChannelFunctionType, FixtureProfile } from '../../types';
 import {
   exportFixtureProfilesJson,
@@ -10,8 +26,17 @@ import {
   validateFixtureProfiles,
 } from '../../utils/fixtureProfiles';
 import { setLocalStorageJsonDebounced } from '../../utils/localStorageDebounced';
+import type { Fixture } from '../../types';
+import {
+  FIXTURE_PROFILE_DRAFT_EVENT,
+  listMissingProfilesFromPatch,
+} from '../../utils/fixtureProfileFromPatch';
 
-export const FixtureEditorTab = () => {
+interface FixtureEditorTabProps {
+  patchedFixtures?: Fixture[];
+}
+
+export const FixtureEditorTab = ({ patchedFixtures = [] }: FixtureEditorTabProps) => {
   const [profiles, setProfiles] = useState<FixtureProfile[]>([]);
   const [editingProfile, setEditingProfile] = useState<FixtureProfile | null>(null);
 
@@ -26,7 +51,7 @@ export const FixtureEditorTab = () => {
           id: 'stairville_flood_150',
           name: 'LED Flood Panel 150',
           manufacturer: 'Stairville',
-          model: 'Flood 150',
+          model: 'LED Flood Panel 150',
           channels: 8,
           type: 'RGB',
           channelDefs: [
@@ -44,7 +69,7 @@ export const FixtureEditorTab = () => {
           id: 'eurolite_party_tcl',
           name: 'LED PARty TCL spot',
           manufacturer: 'Eurolite',
-          model: 'TCL Spot',
+          model: 'LED PARty TCL spot',
           channels: 5,
           type: 'RGB',
           channelDefs: [
@@ -109,7 +134,7 @@ export const FixtureEditorTab = () => {
           id: 'cameo_wookie_200r',
           name: 'Cameo WOOKIE 200 R',
           manufacturer: 'Cameo',
-          model: 'Wookie 200 R',
+          model: 'WOOKIE 200 R',
           channels: 9,
           type: 'Laser',
           channelDefs: [
@@ -123,12 +148,72 @@ export const FixtureEditorTab = () => {
             { index: 8, name: 'Rotation Z', type: 'other' },
             { index: 9, name: 'Size', type: 'other' },
           ]
-        }
+        },
+        {
+          id: 'boomtone_dynamo_scan',
+          name: 'Dynamo Scan LED',
+          manufacturer: 'BoomToneDJ',
+          model: 'Dynamo Scan LED',
+          channels: 9,
+          type: 'Moving Head',
+          channelDefs: [
+            { index: 1, name: 'Pan', type: 'pan' },
+            { index: 2, name: 'Tilt', type: 'tilt' },
+            { index: 3, name: 'Pan fin', type: 'other' },
+            { index: 4, name: 'Tilt fin', type: 'other' },
+            { index: 5, name: 'Vitesse', type: 'speed' },
+            { index: 6, name: 'Couleur', type: 'color' },
+            { index: 7, name: 'Gobo', type: 'gobo' },
+            { index: 8, name: 'Dimmer', type: 'dimmer' },
+            { index: 9, name: 'Strobe', type: 'strobe' },
+          ],
+        },
+        {
+          id: 'ibiza_las_30g',
+          name: 'LAS-30G',
+          manufacturer: 'Ibiza',
+          model: 'LAS-30G',
+          channels: 5,
+          type: 'Laser',
+          channelDefs: [
+            { index: 1, name: 'Mode', type: 'other' },
+            { index: 2, name: 'Pattern', type: 'other' },
+            { index: 3, name: 'Dimmer', type: 'dimmer' },
+            { index: 4, name: 'Strobe', type: 'strobe' },
+            { index: 5, name: 'Vitesse', type: 'speed' },
+          ],
+        },
       ];
       setProfiles(defaults);
       localStorage.setItem('fixture_profiles', JSON.stringify(defaults));
     }
   }, []);
+
+  useEffect(() => {
+    const onDraft = (e: Event) => {
+      const profile = (e as CustomEvent<FixtureProfile>).detail;
+      if (profile?.id) setEditingProfile(profile);
+    };
+    window.addEventListener(FIXTURE_PROFILE_DRAFT_EVENT, onDraft);
+    return () => window.removeEventListener(FIXTURE_PROFILE_DRAFT_EVENT, onDraft);
+  }, []);
+
+  const importMissingFromPatch = () => {
+    const missing = listMissingProfilesFromPatch(patchedFixtures, profiles);
+    if (missing.length === 0) {
+      alert('Tous les projecteurs patchés ont déjà un profil librairie (ou équivalent).');
+      return;
+    }
+    if (
+      !confirm(
+        `Ajouter ${missing.length} profil(s) manquant(s) depuis le patch ? Vous pourrez ajuster les canaux puis enregistrer.`
+      )
+    ) {
+      return;
+    }
+    saveProfiles([...profiles, ...missing]);
+    setEditingProfile(missing[0] ?? null);
+  };
 
   const saveProfiles = (newProfiles: FixtureProfile[]) => {
     const check = validateFixtureProfiles(newProfiles);
@@ -138,6 +223,7 @@ export const FixtureEditorTab = () => {
     }
     setProfiles(newProfiles);
     setLocalStorageJsonDebounced('fixture_profiles', newProfiles);
+    notifyFixtureProfilesUpdated();
   };
 
   const handleExportLibrary = async () => {
@@ -190,12 +276,20 @@ export const FixtureEditorTab = () => {
 
   const handleSaveProfile = () => {
     if (!editingProfile) return;
+    let profileToSave = editingProfile;
+    const img = profileToSave.imageUrl?.trim();
+    if (img && !isAllowedProfileImageUrl(img)) {
+      alert('Image ignorée : format non valide.');
+      profileToSave = { ...profileToSave, imageUrl: undefined };
+    } else if (img) {
+      profileToSave = { ...profileToSave, imageUrl: img };
+    }
     const exists = profiles.find(p => p.id === editingProfile.id);
     let newProfiles;
     if (exists) {
-      newProfiles = profiles.map(p => p.id === editingProfile.id ? editingProfile : p);
+      newProfiles = profiles.map(p => p.id === profileToSave.id ? profileToSave : p);
     } else {
-      newProfiles = [...profiles, editingProfile];
+      newProfiles = [...profiles, profileToSave];
     }
     saveProfiles(newProfiles);
     setEditingProfile(null);
@@ -256,6 +350,15 @@ export const FixtureEditorTab = () => {
               Importer
             </button>
           </div>
+          {patchedFixtures.length > 0 && (
+            <button
+              type="button"
+              onClick={importMissingFromPatch}
+              className="w-full mb-3 py-2.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-200 hover:bg-amber-500/20"
+            >
+              Créer profils manquants depuis le patch
+            </button>
+          )}
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
             <button 
               onClick={createNewProfile}
@@ -269,14 +372,15 @@ export const FixtureEditorTab = () => {
               <div 
                 key={profile.id}
                 onClick={() => setEditingProfile(profile)}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between ${
+                className={`p-4 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between gap-3 ${
                   editingProfile?.id === profile.id 
                     ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400' 
                     : 'bg-white/5 border-white/5 text-slate-400 hover:border-white/20'
                 }`}
               >
-                <div>
-                  <p className="text-xs font-black uppercase tracking-widest">{profile.name}</p>
+                <FixtureProfilePhoto src={profile.imageUrl} alt={profile.name} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black uppercase tracking-widest truncate">{profile.name}</p>
                   <p className="text-[10px] text-slate-500">{profile.manufacturer} - {profile.channels} CH</p>
                 </div>
                 <button 
@@ -304,38 +408,38 @@ export const FixtureEditorTab = () => {
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Nom du Projecteur</label>
+                  <label className="text-[10px] font-black uppercase text-[var(--pl-muted)] ml-1">Nom du Projecteur</label>
                   <input 
                     value={editingProfile.name}
                     onChange={(e) => setEditingProfile({ ...editingProfile, name: e.target.value })}
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-xs focus:border-cyan-500 outline-none transition-all"
+                    className="pl-input w-full rounded-xl px-4 py-2 text-xs border focus:border-cyan-500 transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Fabricant</label>
+                  <label className="text-[10px] font-black uppercase text-[var(--pl-muted)] ml-1">Fabricant</label>
                   <input 
                     value={editingProfile.manufacturer}
                     onChange={(e) => setEditingProfile({ ...editingProfile, manufacturer: e.target.value })}
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-xs focus:border-cyan-500 outline-none transition-all"
+                    className="pl-input w-full rounded-xl px-4 py-2 text-xs border focus:border-cyan-500 transition-all"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Modèle</label>
+                  <label className="text-[10px] font-black uppercase text-[var(--pl-muted)] ml-1">Modèle</label>
                   <input 
                     value={editingProfile.model}
                     onChange={(e) => setEditingProfile({ ...editingProfile, model: e.target.value })}
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-xs focus:border-cyan-500 outline-none transition-all"
+                    className="pl-input w-full rounded-xl px-4 py-2 text-xs border focus:border-cyan-500 transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Type de Machine</label>
+                  <label className="text-[10px] font-black uppercase text-[var(--pl-muted)] ml-1">Type de Machine</label>
                   <select 
                     value={editingProfile.type}
                     onChange={(e) => setEditingProfile({ ...editingProfile, type: e.target.value as FixtureProfile['type'] })}
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-xs focus:border-cyan-500 outline-none transition-all appearance-none cursor-pointer"
+                    className="pl-select w-full rounded-xl px-4 py-2 text-xs appearance-none cursor-pointer"
                   >
                     <option value="RGB">LED / RGB</option>
                     <option value="Moving Head">Lyre / Moving Head</option>
@@ -344,6 +448,20 @@ export const FixtureEditorTab = () => {
                     <option value="Other">Autre / Gradateur</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="pl-inset space-y-3">
+                <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-widest flex items-center gap-2">
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  Photo matériel (Patch &amp; Vue DMX)
+                </h3>
+                <FixtureProfilePhotoImport
+                  value={editingProfile.imageUrl}
+                  alt={editingProfile.name}
+                  onChange={(imageUrl) =>
+                    setEditingProfile({ ...editingProfile, imageUrl })
+                  }
+                />
               </div>
 
               <div className="pt-4 border-t border-white/5">
@@ -367,12 +485,12 @@ export const FixtureEditorTab = () => {
                         value={def.name}
                         placeholder="Nom du canal"
                         onChange={(e) => updateChannel(i, 'name', e.target.value)}
-                        className="flex-1 bg-transparent border-none text-xs focus:ring-0 outline-none font-bold"
+                        className="pl-input pl-input--inline flex-1 text-xs font-bold min-w-0"
                       />
                       <select 
                         value={def.type}
                         onChange={(e) => updateChannel(i, 'type', e.target.value as ChannelFunctionType)}
-                        className="bg-slate-800 border-none rounded-lg text-[10px] font-black uppercase px-2 py-1 cursor-pointer outline-none"
+                        className="pl-select rounded-lg text-[10px] font-black uppercase px-2 py-1 cursor-pointer shrink-0"
                       >
                         <option value="dimmer">Dimmer</option>
                         <option value="red">Rouge</option>
@@ -407,7 +525,7 @@ export const FixtureEditorTab = () => {
                 </button>
                 <button 
                   onClick={() => setEditingProfile(null)}
-                  className="px-8 py-4 bg-slate-800 text-slate-400 rounded-2xl text-xs font-black uppercase tracking-widest border border-white/5 hover:bg-slate-700 transition-all"
+                  className="pl-btn-secondary px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all"
                 >
                   Annuler
                 </button>

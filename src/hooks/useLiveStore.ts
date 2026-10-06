@@ -5,7 +5,10 @@ import {
   CustomTrajectory,
   GroupMovement,
   GroupPosition,
+  GroupPositionMemoryMode,
   MovementPreset,
+  GroupQuickMovementSaves,
+  GroupCustomMovementSlotLinks,
 } from '../types';
 import { useJsonLocalStorage } from './useJsonLocalStorage';
 
@@ -26,6 +29,14 @@ export function useLiveStore() {
     'dmx_group_tilt',
     {}
   );
+  const [groupMovementCenters, setGroupMovementCenters] = useJsonLocalStorage<
+    Record<string, Record<string, { x: number; y: number }>>
+  >('dmx_group_movement_centers', {});
+  const [groupMovementCenterLinked, setGroupMovementCenterLinked] =
+    useJsonLocalStorage<Record<string, boolean>>(
+      'dmx_group_movement_center_linked',
+      {}
+    );
   const [groupAutoColorActive, setGroupAutoColorActive] = useJsonLocalStorage<
     Record<string, boolean>
   >('dmx_group_auto_color', {});
@@ -45,9 +56,24 @@ export function useLiveStore() {
   const [groupPositions, setGroupPositions] = useJsonLocalStorage<
     Record<string, GroupPosition[]>
   >('dmx_group_positions', {});
+  const [groupCenterPositions, setGroupCenterPositions] = useJsonLocalStorage<
+    Record<string, GroupPosition>
+  >('dmx_group_center_position', {});
+  const [groupPositionMemoryMode, setGroupPositionMemoryMode] =
+    useJsonLocalStorage<Record<string, GroupPositionMemoryMode>>(
+      'dmx_group_position_memory_mode',
+      {}
+    );
   const [groupMovementPresets, setGroupMovementPresets] = useJsonLocalStorage<
     Record<string, MovementPreset[]>
   >('dmx_group_movement_presets', {});
+  const [groupQuickMovementSaves, setGroupQuickMovementSaves] =
+    useJsonLocalStorage<GroupQuickMovementSaves>('dmx_group_quick_movement_saves', {});
+  const [groupCustomMovementSlotLinks, setGroupCustomMovementSlotLinks] =
+    useJsonLocalStorage<GroupCustomMovementSlotLinks>(
+      'dmx_group_custom_movement_slots',
+      {}
+    );
   const [fixtureCalibration, setFixtureCalibration] = useJsonLocalStorage<
     Record<number, CalibrationSettings>
   >('dmx_fixture_calibration', {});
@@ -83,6 +109,10 @@ export function useLiveStore() {
     setGroupPan,
     groupTilt,
     setGroupTilt,
+    groupMovementCenters,
+    setGroupMovementCenters,
+    groupMovementCenterLinked,
+    setGroupMovementCenterLinked,
     groupAutoColorActive,
     setGroupAutoColorActive,
     groupAutoGoboActive,
@@ -95,8 +125,16 @@ export function useLiveStore() {
     setGroupGobos,
     groupPositions,
     setGroupPositions,
+    groupCenterPositions,
+    setGroupCenterPositions,
+    groupPositionMemoryMode,
+    setGroupPositionMemoryMode,
     groupMovementPresets,
     setGroupMovementPresets,
+    groupQuickMovementSaves,
+    setGroupQuickMovementSaves,
+    groupCustomMovementSlotLinks,
+    setGroupCustomMovementSlotLinks,
     fixtureCalibration,
     setFixtureCalibration,
     groupPulseActive,

@@ -91,6 +91,8 @@ export function useStagePositions(fixtures: Fixture[]) {
                 rotationY: 0,
                 beamShape: 'round' as const,
                 beamWidth: 200,
+                beamSpread: 100,
+                beamVisual: 100,
               }
             : p
         );

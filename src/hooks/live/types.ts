@@ -41,6 +41,9 @@ export interface UseLiveLogicProps {
   setGroupPan: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   groupTilt: Record<string, number>;
   setGroupTilt: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  setGroupMovementCenters: React.Dispatch<
+    React.SetStateAction<Record<string, Record<string, { x: number; y: number }>>>
+  >;
   fixtureCalibration: Record<number, CalibrationSettings>;
   setFixtureCalibration: React.Dispatch<React.SetStateAction<Record<number, CalibrationSettings>>>;
 }

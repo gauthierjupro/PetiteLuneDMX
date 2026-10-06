@@ -1,5 +1,12 @@
 import React from 'react';
 import { hslToRgb } from '../../utils/colorUtils';
+import { loadFixtureProfilesFromStorage } from '../useFixtureProfiles';
+import {
+  applyFixtureDmxAction,
+  applyFixtureGobo,
+  fixtureChannelIndex,
+} from '../../utils/fixtureDmxChannels';
+import { fixtureIsMovementCapable } from '../../utils/autoLiveGroups';
 import type {
   CalibrationSettings,
   Fixture,
@@ -36,6 +43,9 @@ interface UseLiveActionsParams {
   setGroupGobos: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   setGroupPan: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   setGroupTilt: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  setGroupMovementCenters: React.Dispatch<
+    React.SetStateAction<Record<string, Record<string, { x: number; y: number }>>>
+  >;
   fixtureCalibration: Record<number, CalibrationSettings>;
   isAmbianceAutoColorActive: boolean;
   setIsAmbianceAutoColorActive: React.Dispatch<React.SetStateAction<boolean>>;
@@ -69,6 +79,7 @@ export function useLiveActions({
   setGroupGobos,
   setGroupPan,
   setGroupTilt,
+  setGroupMovementCenters,
   fixtureCalibration,
   isAmbianceAutoColorActive,
   setIsAmbianceAutoColorActive,
@@ -159,18 +170,16 @@ export function useLiveActions({
 
       const targetIds = !groupId ? getLinkedFixtureIds() : fixtureIds;
 
+      const profiles = loadFixtureProfilesFromStorage();
       targetIds.forEach((id) => {
         const fixture = fixtures.find((f) => f.id === id);
-        if (fixture) {
-          if (fixture.type === 'Moving Head' && wheelValue !== undefined) {
-            updateDmx(fixture.address + 7, wheelValue);
-          } else if (fixture.type === 'RGB') {
-            const start = fixture.address - 1;
-            updateDmx(start + 1, r);
-            updateDmx(start + 2, g);
-            updateDmx(start + 3, b);
-          }
+        if (!fixture) return;
+        if (wheelValue !== undefined) {
+          const colorCh = fixtureChannelIndex(fixture, 'color', profiles);
+          if (colorCh != null) updateDmx(colorCh, wheelValue);
+          return;
         }
+        applyFixtureDmxAction(fixture, 'color', { r, g, b }, updateDmx, profiles);
       });
 
       if (!groupId) {
@@ -358,11 +367,10 @@ export function useLiveActions({
               setGroupAutoGoboActive((prev) => ({ ...prev, [groupId]: false }));
               setGroupGobos((prev) => ({ ...prev, [groupId]: goboIndex }));
               const dmxValue = goboIndex * 32;
+              const profiles = loadFixtureProfilesFromStorage();
               fixtureIds.forEach((id) => {
                 const fixture = fixtures.find((f) => f.id === id);
-                if (fixture && fixture.type === 'Moving Head') {
-                  updateDmx(fixture.address + 6, dmxValue);
-                }
+                if (fixture) applyFixtureGobo(fixture, dmxValue, updateDmx, profiles);
               });
             }
           }
@@ -394,28 +402,66 @@ export function useLiveActions({
   );
 
   const sendMovement = React.useCallback(
-    (fixtureIds: number[], pan: number, tilt: number, groupId: string) => {
-      fixtureIds.forEach((id) => {
+    (
+      fixtureIds: number[],
+      pan: number,
+      tilt: number,
+      groupId: string,
+      options?: { onlyFixtureId?: number }
+    ) => {
+      const profiles = loadFixtureProfilesFromStorage();
+      const targetIds = options?.onlyFixtureId
+        ? [options.onlyFixtureId]
+        : fixtureIds;
+      targetIds.forEach((id) => {
         const fixture = fixtures.find((f) => f.id === id);
-        if (fixture && fixture.type === 'Moving Head') {
-          const cal = fixtureCalibration[id] || {
-            invertPan: false,
-            invertTilt: false,
-            offsetPan: 0,
-            offsetTilt: 0,
-          };
-          let finalPan = Math.min(255, Math.max(0, pan + (cal.offsetPan || 0)));
-          let finalTilt = Math.min(255, Math.max(0, tilt + (cal.offsetTilt || 0)));
-          if (cal.invertPan) finalPan = 255 - finalPan;
-          if (cal.invertTilt) finalTilt = 255 - finalTilt;
-          updateDmx(fixture.address - 1, finalPan);
-          updateDmx(fixture.address + 1, finalTilt);
-        }
+        if (!fixture || !fixtureIsMovementCapable(fixture)) return;
+        const cal = fixtureCalibration[id] || {
+          invertPan: false,
+          invertTilt: false,
+          offsetPan: 0,
+          offsetTilt: 0,
+        };
+        let finalPan = Math.min(255, Math.max(0, pan + (cal.offsetPan || 0)));
+        let finalTilt = Math.min(255, Math.max(0, tilt + (cal.offsetTilt || 0)));
+        if (cal.invertPan) finalPan = 255 - finalPan;
+        if (cal.invertTilt) finalTilt = 255 - finalTilt;
+        applyFixtureDmxAction(fixture, 'pan', finalPan, updateDmx, profiles);
+        applyFixtureDmxAction(fixture, 'tilt', finalTilt, updateDmx, profiles);
       });
-      setGroupPan((prev) => ({ ...prev, [groupId]: pan }));
-      setGroupTilt((prev) => ({ ...prev, [groupId]: tilt }));
+      const fixtureKey = (id: number) => String(id);
+      if (!options?.onlyFixtureId) {
+        setGroupPan((prev) => ({ ...prev, [groupId]: pan }));
+        setGroupTilt((prev) => ({ ...prev, [groupId]: tilt }));
+        setGroupMovementCenters((prev) => {
+          const groupMap = { ...(prev[groupId] ?? {}) };
+          targetIds.forEach((id) => {
+            const fixture = fixtures.find((f) => f.id === id);
+            if (fixture && fixtureIsMovementCapable(fixture)) {
+              groupMap[fixtureKey(id)] = { x: pan, y: tilt };
+            }
+          });
+          return { ...prev, [groupId]: groupMap };
+        });
+      } else {
+        const onlyId = options.onlyFixtureId;
+        setGroupMovementCenters((prev) => ({
+          ...prev,
+          [groupId]: {
+            ...(prev[groupId] ?? {}),
+            [fixtureKey(onlyId)]: { x: pan, y: tilt },
+          },
+        }));
+      }
     },
-    [fixtures, fixtureCalibration, updateDmx, setGroupPan, setGroupTilt]
+    [
+      fixtures,
+      fixtureCalibration,
+      updateDmx,
+      setGroupPan,
+      setGroupTilt,
+      setGroupMovementCenters,
+    ]
   );
 
   const handleEndOfSong = React.useCallback(() => {

@@ -4,6 +4,9 @@ import { Zap, Lock, Unlock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { ValuePromptModal } from '../ui/ValuePromptModal';
 import type { Fixture } from '../../types';
+import { useFixtureProfiles } from '../../hooks/useFixtureProfiles';
+import { FixtureProfilePhoto } from '../ui/FixtureProfilePhoto';
+import { resolveFixtureProfileImageUrl } from '../../utils/fixtureProfileImage';
 
 interface DmxConsoleTabProps {
   fixtures: Fixture[];
@@ -29,9 +32,9 @@ const getChannelColor = (label: string) => {
   if (label === 'Vert' || label === 'V') return 'bg-green-500';
   if (label === 'Bleu' || label === 'B') return 'bg-blue-500';
   if (label === 'Intensité' || label === 'I') return 'bg-yellow-500';
-  if (label === 'Strobe' || label === 'S') return 'bg-white';
+  if (label === 'Strobe' || label === 'S') return 'bg-zinc-500';
   if (label === 'Programme' || label === 'M') return 'bg-purple-500';
-  return 'bg-slate-600';
+  return 'bg-[var(--pl-fader-fill)]';
 };
 
 // --- Sous-composant pour un canal individuel (Optimisé) ---
@@ -98,15 +101,18 @@ const DmxChannelSlider = React.memo(({
   return (
     <>
       <div 
-        className={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${isManualMode ? 'bg-white/5 border border-white/5 shadow-inner ring-1 ring-white/10' : 'opacity-40 grayscale group-hover:grayscale-0'}`}
+        className={`flex flex-col items-center gap-1.5 transition-all ${
+          isManualMode ? 'pl-fader-cell' : 'pl-fader-cell pl-fader-cell--readonly'
+        }`}
         onContextMenu={handleContextMenu}
       >
         <div className="relative h-24 w-6 flex items-center justify-center">
-          <div className="absolute inset-0 w-1.5 left-1/2 -translate-x-1/2 bg-black/40 rounded-full" />
-          <div 
-            className={`absolute bottom-0 w-1.5 left-1/2 -translate-x-1/2 rounded-full transition-all ${getChannelColor(label)}`}
-            style={{ height: `${(localVal / 255) * 100}%` }}
-          />
+          <div className="pl-fader-rail h-full w-1.5">
+            <div
+              className={`pl-fader-rail-fill pl-fader-fill ${getChannelColor(label)}`}
+              style={{ height: `${(localVal / 255) * 100}%` }}
+            />
+          </div>
           <input
             type="range"
             min="0"
@@ -119,14 +125,16 @@ const DmxChannelSlider = React.memo(({
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-default"
             style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
           />
-          <div 
-            className="absolute left-1/2 -translate-x-1/2 w-4 h-2 bg-white rounded-sm shadow-lg pointer-events-none"
+          <div
+            className="pl-fader-handle pointer-events-none"
             style={{ bottom: `calc(${(localVal / 255) * 100}% - 4px)` }}
           />
         </div>
-        <span className="text-[9px] font-mono font-black text-cyan-400">{Math.round(localVal)}</span>
-        <span className="text-[9px] font-black uppercase tracking-tighter text-slate-500 max-w-[40px] truncate">{label}</span>
-        <span className="text-[8px] font-mono font-black text-slate-500">CH{chAddr}</span>
+        <span className="text-[9px] font-mono font-black text-cyan-500">{Math.round(localVal)}</span>
+        <span className="text-[9px] font-black uppercase tracking-tighter text-[var(--pl-muted)] max-w-[40px] truncate">
+          {label}
+        </span>
+        <span className="text-[8px] font-mono font-black text-[var(--pl-muted)]">CH{chAddr}</span>
       </div>
 
       <ValuePromptModal
@@ -145,6 +153,7 @@ DmxChannelSlider.displayName = 'DmxChannelSlider';
 
 export const DmxConsoleTab = ({ fixtures, channels, updateDmx, onIdentify }: DmxConsoleTabProps) => {
   const [isManualMode, setIsManualMode] = React.useState(false);
+  const profiles = useFixtureProfiles();
 
   const toggleManualMode = async () => {
     const newState = !isManualMode;
@@ -209,6 +218,22 @@ export const DmxConsoleTab = ({ fixtures, channels, updateDmx, onIdentify }: Dmx
               >
                 ID
               </button>
+
+              <div className="flex gap-4 items-start mb-3 pb-3 border-b border-white/5">
+                <FixtureProfilePhoto
+                  src={resolveFixtureProfileImageUrl(fixture, profiles)}
+                  alt={fixture.name}
+                  size="lg"
+                />
+                <div className="min-w-0 pt-1">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                    {fixture.manufacturer} · {fixture.model}
+                  </p>
+                  <p className="text-[9px] text-slate-500 mt-1 uppercase font-bold">
+                    {fixture.type} · {fixture.channels} canaux
+                  </p>
+                </div>
+              </div>
 
               <div className="flex gap-2 overflow-x-auto pb-2 pt-2 scrollbar-none">
                 {Array.from({ length: fixture.channels }).map((_, idx) => {

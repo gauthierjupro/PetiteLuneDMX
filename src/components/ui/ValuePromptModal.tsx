@@ -36,7 +36,7 @@ export const ValuePromptModal = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title}>
+    <Modal isOpen={isOpen} onClose={onClose} title={title} layer="stack">
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">

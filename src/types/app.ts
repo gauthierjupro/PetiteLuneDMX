@@ -1,8 +1,7 @@
 export type TabType =
   | 'live'
-  | 'fixtures'
+  | 'autoLive'
   | 'patch'
-  | 'console'
   | 'stage'
   | 'stage3d'
   | 'editor'
@@ -29,6 +28,8 @@ export interface Fixture {
   address: number;
   channels: number;
   type: FixtureKind;
+  /** Profil librairie d’origine (photo / canaux). */
+  profileId?: string;
   /** Univers DMX (1 = 512 canaux actuels). */
   universeId?: number;
   /** Labels optionnels par canal (onglet Projecteurs). */
@@ -39,7 +40,10 @@ export interface Group {
   id: string;
   name: string;
   fixtureIds: number[];
+  /** Colonne Ambiances du Live. */
   isAmbiance?: boolean;
+  /** Colonne Mouvements du Live (lyres, scans, lasers…). */
+  isMovement?: boolean;
 }
 
 export interface RgbColor {
@@ -60,6 +64,11 @@ export type GroupControlAction = 'dimmer' | 'color' | 'strobe';
 export type MovementShape =
   | 'none'
   | 'circle'
+  | 'square'
+  | 'rectangle'
+  | 'triangle'
+  | 'diamond'
+  | 'pentagon'
   | 'eight'
   | 'pan_sweep'
   | 'tilt_sweep'
@@ -101,7 +110,45 @@ export interface GroupPosition {
   x: number;
   y: number;
   label: string;
+  /** Pan/tilt par lyre (clé = id fixture). Sinon x/y communs. */
+  perFixture?: Record<string, { x: number; y: number }>;
 }
+
+/** Positions mémorisées : une cible pour tout le groupe ou une par lyre. */
+export type GroupPositionMemoryMode = 'linked' | 'per_fixture';
+
+/** Mémorisation clic droit sur un bouton forme (Scan ↔, Cercle…). */
+export interface QuickMovementSavedState {
+  movement: GroupMovement;
+  centerPan: number;
+  centerTilt: number;
+  /** Centre de forme commun (true) ou un centre par lyre. */
+  movementCenterLinked?: boolean;
+  /** Centres par fixture (clé = id lyre en string), si non lié. */
+  movementCentersPerFixture?: Record<string, { x: number; y: number }>;
+}
+
+export type GroupQuickMovementSaves = Record<
+  string,
+  Partial<Record<string, QuickMovementSavedState>>
+>;
+
+export type CustomMovementSlotId = 'custom_1' | 'custom_2' | 'custom_3' | 'custom_4';
+
+export interface CustomMovementSlotLink {
+  /** Trajectoire point à point (bibliothèque). */
+  trajectoryId?: string;
+  /** Forme standard : cercle, carré, scan… (id preset rapide). */
+  shapePresetId?: string;
+  /** Libellé personnalisé affiché sur le bouton. */
+  displayName?: string;
+}
+
+/** Chaque bouton mouvement (Cercle… Perso 4) → forme ou trajectoire de la bibliothèque. */
+export type GroupCustomMovementSlotLinks = Record<
+  string,
+  Partial<Record<string, CustomMovementSlotLink>>
+>;
 
 export interface LivePanTilt {
   pan: number;
@@ -130,6 +177,45 @@ export interface StageFixturePosition {
   rotationX?: number;
   beamShape?: BeamShape;
   beamWidth?: number;
+  /** Taille du pool / ouverture faisceau 3D (25–200, défaut 100). */
+  beamSpread?: number;
+  /** Force du rendu lumineux décoratif (10–100, défaut 100). */
+  beamVisual?: number;
+  /** false = masqué sur le plan 2D et la scène 3D (patch inchangé). */
+  visible?: boolean;
+}
+
+/** Repère au sol (cible répète / pointage). */
+export interface StageLandmark {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
+/** Élément décor scène (enceinte, musicien, DJ…) — position plan % + 3D. */
+export type StageSceneElementKind =
+  | 'speaker_l'
+  | 'speaker_r'
+  | 'speaker'
+  /** Enceinte de retour / wedge couchée (sol scène). */
+  | 'wedge_monitor'
+  | 'vocalist'
+  | 'guitarist'
+  | 'bassist'
+  | 'drummer'
+  | 'keyboardist'
+  | 'dj_booth';
+
+export interface StageSceneElement {
+  id: string;
+  kind: StageSceneElementKind;
+  name: string;
+  x: number;
+  y: number;
+  /** Hauteur scène (0–100), comme les projecteurs. */
+  z: number;
+  enabled: boolean;
 }
 
 export type ChannelFunctionType =
@@ -160,6 +246,8 @@ export interface FixtureProfile {
   channels: number;
   type: 'RGB' | 'Moving Head' | 'Laser' | 'Effect' | 'Other';
   channelDefs: ChannelDef[];
+  /** Photo matériel (data:image/jpeg embarqué) — Patch / Vue DMX, hors ligne. */
+  imageUrl?: string;
 }
 
 /** État d'un groupe dans un preset d'ambiance. */

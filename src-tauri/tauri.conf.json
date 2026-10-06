@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "PetiteLuneDMX",
-    "version": "1.7.0"
+    "version": "1.8.0"
   },
   "tauri": {
     "allowlist": {
@@ -15,7 +15,9 @@
       "dialog": {
         "all": false,
         "open": true,
-        "save": true
+        "save": true,
+        "confirm": true,
+        "message": true
       },
       "shell": {
         "all": false,

@@ -4,6 +4,7 @@ import { Tooltip } from '../../ui/Tooltip';
 import { MasterAmbianceCard } from './MasterAmbianceCard';
 import { AmbianceCard } from './AmbianceCard';
 import { ValuePromptModal } from '../../ui/ValuePromptModal';
+import { LiveGroupsNotice } from './LiveGroupsNotice';
 import type { AmbiancePreset, Fixture, Group, GroupIntensity, RgbColor } from '../../../types';
 
 interface AmbianceSectionProps {
@@ -34,6 +35,10 @@ interface AmbianceSectionProps {
   setFadeTime: (val: number) => void;
   channels: number[];
   fixtures: Fixture[];
+  onGoToPatch?: () => void;
+  unassignedLiveGroups?: Group[];
+  emptyPatchGroups?: Group[];
+  beginnerMode?: boolean;
 }
 
 export const AmbianceSection = ({
@@ -63,7 +68,10 @@ export const AmbianceSection = ({
   fadeTime,
   setFadeTime,
   channels,
-  fixtures
+  fixtures,
+  onGoToPatch,
+  unassignedLiveGroups = [],
+  emptyPatchGroups = [],
 }: AmbianceSectionProps) => {
   const [isFadeModalOpen, setIsFadeModalOpen] = useState(false);
 
@@ -93,9 +101,14 @@ export const AmbianceSection = ({
         </div>
       </div>
 
+      <LiveGroupsNotice
+        unassigned={unassignedLiveGroups}
+        emptyGroups={emptyPatchGroups}
+        onGoToPatch={onGoToPatch}
+      />
+
       <div className="flex gap-4 items-start">
         <div className="flex-1 flex flex-wrap gap-4">
-          {/* CARTE MASTER */}
           {linkedGroups.length >= 1 && (
             <MasterAmbianceCard 
                 linkedCount={linkedGroups.length}
