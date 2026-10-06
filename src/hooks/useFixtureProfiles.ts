@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { FixtureProfile } from '../types';
+import { mergeBundledProfileUpdates } from '../utils/cameoWookie200R';
 
 export function loadFixtureProfilesFromStorage(): FixtureProfile[] {
   try {
     const raw = localStorage.getItem('fixture_profiles');
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as FixtureProfile[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return mergeBundledProfileUpdates(parsed as FixtureProfile[]);
   } catch {
     return [];
   }

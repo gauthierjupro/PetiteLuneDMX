@@ -28,6 +28,7 @@ export interface PatchDmxTabProps {
   onRenameGroup: (groupId: string, newName: string) => void;
   onToggleGroupAmbiance: (groupId: string) => void;
   onToggleGroupMovement: (groupId: string) => void;
+  onToggleGroupSpecial: (groupId: string) => void;
   onEditLibraryProfile?: (fixture: Fixture) => void;
   initialSegment?: PatchDmxSegment;
 }

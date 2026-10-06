@@ -23,6 +23,7 @@ import {
   positionMemoryPerFixtureVisual,
   readLogicalPanTiltFromChannels,
   recallGroupPosition,
+  syncRecalledPositionGroupState,
 } from '../../../utils/groupPositionFixtures';
 import { fixtureIsMovementCapable } from '../../../utils/autoLiveGroups';
 import { CentreApercuPad } from './CentreApercuPad';
@@ -71,7 +72,12 @@ interface EffectsModalProps {
   setGroupMovements: React.Dispatch<React.SetStateAction<Record<string, GroupMovement>>>;
   groupPan: Record<string, number>;
   groupTilt: Record<string, number>;
+  setGroupPan: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  setGroupTilt: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   groupMovementCenters: Record<string, Record<string, { x: number; y: number }>>;
+  setGroupMovementCenters: React.Dispatch<
+    React.SetStateAction<Record<string, Record<string, { x: number; y: number }>>>
+  >;
   groupMovementCenterLinked: Record<string, boolean>;
   setGroupMovementCenterLinked: React.Dispatch<
     React.SetStateAction<Record<string, boolean>>
@@ -114,7 +120,10 @@ export const EffectsModal = ({
   setGroupMovements,
   groupPan,
   groupTilt,
+  setGroupPan,
+  setGroupTilt,
   groupMovementCenters,
+  setGroupMovementCenters,
   groupMovementCenterLinked,
   setGroupMovementCenterLinked,
   sendMovement,
@@ -156,6 +165,10 @@ export const EffectsModal = ({
   );
 
   const readFixturePanTilt = (fixtureId: number) => {
+    if (!centerLinked && movingHeadIds.length > 1) {
+      const stored = groupMovementCenters[groupId]?.[String(fixtureId)];
+      if (stored) return { x: stored.x, y: stored.y };
+    }
     const fixture = fixtures.find((f) => f.id === fixtureId);
     if (!fixture) return { x: centerX, y: centerY };
     return readLogicalPanTiltFromChannels(
@@ -170,7 +183,8 @@ export const EffectsModal = ({
       base,
       movingHeadIds,
       { x: centerX, y: centerY },
-      readFixturePanTilt
+      readFixturePanTilt,
+      centerLinked ? 'linked' : 'per_fixture'
     );
 
   const sendPadMovement = (nx: number, ny: number) => {
@@ -179,6 +193,22 @@ export const EffectsModal = ({
 
   const moveCentreLinked = (nx: number, ny: number) => {
     sendMovement(fixtureIds, nx, ny, groupId);
+  };
+
+  const recallFixedPosition = (position: GroupPosition) => {
+    recallGroupPosition(
+      position,
+      movingHeadIds,
+      fixtureIds,
+      groupId,
+      sendMovement
+    );
+    syncRecalledPositionGroupState(position, movingHeadIds, groupId, {
+      setGroupPan,
+      setGroupTilt,
+      setGroupMovementCenters,
+      setGroupMovementCenterLinked,
+    });
   };
 
   const handleSavePosition = (index: number) => {
@@ -279,6 +309,11 @@ export const EffectsModal = ({
   const [trajMenu, setTrajMenu] = React.useState<{id: string, x: number, y: number} | null>(null);
   const [movementPresetToast, setMovementPresetToast] = React.useState<string | null>(null);
   const [deleteTrajId, setDeleteTrajId] = React.useState<string | null>(null);
+  const [pendingPositionSave, setPendingPositionSave] = React.useState<
+    | { kind: 'center'; label: string }
+    | { kind: 'slot'; index: number; label: string }
+    | null
+  >(null);
   const [valuePrompt, setValuePrompt] = React.useState<{
     title: string;
     label: string;
@@ -576,13 +611,7 @@ export const EffectsModal = ({
 
   const handleCenterAndStop = () => {
     const c = getGroupCenterPosition(groupId, groupCenterPositions);
-    recallGroupPosition(
-      c,
-      movingHeadIds,
-      fixtureIds,
-      groupId,
-      sendMovement
-    );
+    recallFixedPosition(c);
     setGroupMovements((prev: Record<string, GroupMovement>) => ({
       ...prev,
       [groupId]: getStopGroupMovement(),
@@ -594,8 +623,35 @@ export const EffectsModal = ({
       ? customTrajectories.find((t) => t.id === deleteTrajId)?.label
       : undefined;
 
+  const confirmPendingPositionSave = () => {
+    if (!pendingPositionSave) return;
+    if (pendingPositionSave.kind === 'center') {
+      handleSaveCenterPosition();
+    } else {
+      handleSavePosition(pendingPositionSave.index);
+    }
+    setPendingPositionSave(null);
+    setMovementPresetToast('Position mémorisée');
+  };
+
+  const positionSaveConfirmMessage = pendingPositionSave
+    ? `Remplacer « ${pendingPositionSave.label} » par la position actuelle${
+        centerLinked ? ' (centre lié)' : ' (centre par lyre)'
+      } ?`
+    : '';
+
   const movementDialogs = (
     <>
+      <ConfirmModal
+        isOpen={pendingPositionSave != null}
+        onClose={() => setPendingPositionSave(null)}
+        onConfirm={confirmPendingPositionSave}
+        title="Mémoriser la position"
+        message={positionSaveConfirmMessage}
+        confirmLabel="Mémoriser"
+        cancelLabel="Annuler"
+        tone="default"
+      />
       <ConfirmModal
         isOpen={deleteTrajId != null}
         onClose={() => setDeleteTrajId(null)}
@@ -778,11 +834,11 @@ export const EffectsModal = ({
                     Positions mémorisées
                   </p>
                   <div className="flex items-center gap-2">
-                    <Tooltip text="Centre (arrête l’effet) et positions fixes. Clic droit sur une tuile = mémoriser pan/tilt (lié ou par lyre selon le pad).">
+                    <Tooltip text="Centre (arrête l’effet) et positions fixes. Clic droit = mémoriser : avec « Centre lié », un seul pan/tilt commun ; en « Centre par lyre », une valeur par lyre.">
                       <HelpCircle className="w-4 h-4 text-slate-600 hover:text-white cursor-help transition-colors" />
                     </Tooltip>
                     <span className="text-[9px] text-slate-500 italic hidden sm:inline">
-                      Clic droit : sauver
+                      Clic droit : mémoriser…
                     </span>
                   </div>
                 </div>
@@ -803,7 +859,10 @@ export const EffectsModal = ({
                       onClick={handleCenterAndStop}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        handleSaveCenterPosition();
+                        setPendingPositionSave({
+                          kind: 'center',
+                          label: centerPosition.label,
+                        });
                       }}
                     />
                     <button
@@ -833,18 +892,14 @@ export const EffectsModal = ({
                           label={pos.label}
                           size="md"
                           active={isCurrent}
-                          onClick={() =>
-                            recallGroupPosition(
-                              pos,
-                              movingHeadIds,
-                              fixtureIds,
-                              groupId,
-                              sendMovement
-                            )
-                          }
+                          onClick={() => recallFixedPosition(pos)}
                           onContextMenu={(e) => {
                             e.preventDefault();
-                            handleSavePosition(i);
+                            setPendingPositionSave({
+                              kind: 'slot',
+                              index: i,
+                              label: pos.label || `Position ${i + 1}`,
+                            });
                           }}
                         />
                         <button

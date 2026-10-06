@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.9.0 — 2026-10-06
+
+Release Live laser, groupes Spéciaux et fiabilisation des positions mémorisées.
+
+### Live — Spéciaux / Divers
+- Colonne Live **Spéciaux / Divers** (Patch : case **Spéciaux** sur les groupes)
+- Détection auto des lasers seuls hors colonnes Ambiance / Mouvements
+- Panneau **Cameo WOOKIE 200 R** : modes Off / Auto / Musical / DMX, 32 presets, sliders CH4–9
+
+### Live — Lyres & mouvements
+- Rappel des **positions mémorisées** synchronisé avec **centre lié** (pad, sliders, DMX)
+- Mémorisation respectant centre lié vs centre par lyre (`memoryLinked`)
+- **Confirmation** au clic droit avant écrasement d’une position mémorisée
+- En-têtes colonne Lyres compactés (mode Débutant / Régie)
+
+### Patch & profils
+- Profils **WOOKIE 200 R** (9 ch / 3 ch), merge au chargement, template depuis le patch
+- Test appareil : panneau laser aligné sur le Live
+
 ## 1.8.0 — 2026-10-06
 
 Release Live / Scène / Patch orientée spectacle et simplicité (voir [AMELIORATIONS.md](./AMELIORATIONS.md)).

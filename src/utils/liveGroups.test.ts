@@ -3,6 +3,7 @@ import {
   getLiveAmbianceGroups,
   getLiveLyreDisplayGroups,
   getLiveLyreGroups,
+  getLiveSpecialGroups,
   getLiveUnassignedGroups,
   isLiveOrphanLyreGroup,
 } from './liveGroups';
@@ -108,11 +109,11 @@ describe('liveGroups', () => {
     expect(getLiveUnassignedGroups(groups, [dynamo])).toEqual([]);
   });
 
-  it('signale les groupes non assignés à une colonne', () => {
+  it('place un laser seul en colonne Spéciaux (auto)', () => {
     const groups: Group[] = [
       {
         id: 'laser',
-        name: 'Laser',
+        name: 'Divers FX',
         fixtureIds: [3],
       },
     ];
@@ -128,7 +129,29 @@ describe('liveGroups', () => {
         type: 'Laser',
       },
     ];
-    expect(getLiveUnassignedGroups(groups, laserFixtures).map((g) => g.id)).toEqual(['laser']);
+    expect(getLiveSpecialGroups(groups, laserFixtures).map((g) => g.id)).toEqual(['laser']);
+    expect(getLiveUnassignedGroups(groups, laserFixtures)).toEqual([]);
+  });
+
+  it('groupe Spéciaux explicite : hors Ambiance et Mouvements', () => {
+    const laserFixtures: Fixture[] = [
+      ...fixtures,
+      {
+        id: 3,
+        name: 'L',
+        manufacturer: 'Cameo',
+        model: 'WOOKIE 200 R',
+        address: 20,
+        channels: 9,
+        type: 'Laser',
+      },
+    ];
+    const groups: Group[] = [
+      { id: 'divers', name: 'Divers', fixtureIds: [3], isSpecial: true },
+    ];
+    expect(getLiveSpecialGroups(groups, laserFixtures).map((g) => g.id)).toEqual(['divers']);
+    expect(getLiveLyreGroups(groups, laserFixtures)).toEqual([]);
+    expect(getLiveAmbianceGroups(groups, laserFixtures)).toEqual([]);
   });
 
   it('affiche un groupe laser avec case Mouvement en colonne Mouvements', () => {

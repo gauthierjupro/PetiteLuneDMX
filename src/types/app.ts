@@ -42,8 +42,10 @@ export interface Group {
   fixtureIds: number[];
   /** Colonne Ambiances du Live. */
   isAmbiance?: boolean;
-  /** Colonne Mouvements du Live (lyres, scans, lasers…). */
+  /** Colonne Mouvements du Live (lyres, scans…). */
   isMovement?: boolean;
+  /** Colonne Spéciaux du Live (Divers : laser, effets, gradateurs…). */
+  isSpecial?: boolean;
 }
 
 export interface RgbColor {
@@ -112,6 +114,8 @@ export interface GroupPosition {
   label: string;
   /** Pan/tilt par lyre (clé = id fixture). Sinon x/y communs. */
   perFixture?: Record<string, { x: number; y: number }>;
+  /** Mémorisé en « centre lié » (centre commun) vs « centre par lyre ». */
+  memoryLinked?: boolean;
 }
 
 /** Positions mémorisées : une cible pour tout le groupe ou une par lyre. */

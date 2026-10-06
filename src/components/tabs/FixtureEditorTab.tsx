@@ -21,6 +21,10 @@ import {
 } from '../../utils/fixtureProfileImage';
 import type { ChannelDef, ChannelFunctionType, FixtureProfile } from '../../types';
 import {
+  bundledWookie200R3Profile,
+  bundledWookie200R9Profile,
+} from '../../utils/cameoWookie200R';
+import {
   exportFixtureProfilesJson,
   parseFixtureProfilesImport,
   validateFixtureProfiles,
@@ -130,25 +134,8 @@ export const FixtureEditorTab = ({ patchedFixtures = [] }: FixtureEditorTabProps
             { index: 5, name: 'Strobe', type: 'strobe' },
           ]
         },
-        {
-          id: 'cameo_wookie_200r',
-          name: 'Cameo WOOKIE 200 R',
-          manufacturer: 'Cameo',
-          model: 'WOOKIE 200 R',
-          channels: 9,
-          type: 'Laser',
-          channelDefs: [
-            { index: 1, name: 'Mode', type: 'other' },
-            { index: 2, name: 'Pattern', type: 'other' },
-            { index: 3, name: 'Dimmer', type: 'dimmer' },
-            { index: 4, name: 'Pan', type: 'pan' },
-            { index: 5, name: 'Tilt', type: 'tilt' },
-            { index: 6, name: 'Rotation X', type: 'other' },
-            { index: 7, name: 'Rotation Y', type: 'other' },
-            { index: 8, name: 'Rotation Z', type: 'other' },
-            { index: 9, name: 'Size', type: 'other' },
-          ]
-        },
+        bundledWookie200R9Profile(),
+        bundledWookie200R3Profile(),
         {
           id: 'boomtone_dynamo_scan',
           name: 'Dynamo Scan LED',

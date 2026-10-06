@@ -14,7 +14,8 @@ Ce lexique facilite la communication lors des modifications du code. Il regroupe
 | **Dimmer** | Intensité globale. |
 | **Pan / Tilt** | Rotation horizontale / inclinaison verticale (lyres). |
 | **Strobe** | Clignotement rapide. |
-| **Gobo** | Motif projeté (lyre). |
+| **Gobo** | Motif projeté (lyre) ; sur laser Cameo WOOKIE 200 R (9 ch), CH3 = **32 presets** (type `gobo` en librairie). |
+| **WOOKIE 200 R — mode DMX** | CH1 **192–255** pour activer CH2–9 ; CH3 = preset 1–32 (bins ~8 DMX) ; CH8/9 = déplacement X/Y (pan/tilt Live). |
 | **Fade presets** | Durée de fondu (secondes) pour rappels presets ambiance 1–8 et looks Auto Live. |
 
 ## 2. Navigation & onglets
@@ -35,6 +36,7 @@ Ce lexique facilite la communication lors des modifications du code. Il regroupe
 | **Master** | Dimmer global + strobe + audio/BPM. |
 | **Blackout** | Coupure DMX (Rust) + master à 0 (raccourci **B**). |
 | **Ambiance / Groupe ambiance** | Groupe Patch `isAmbiance` : PAR, washes. |
+| **Spéciaux / Divers** | Groupe Patch `isSpecial` : laser, brume, gradateurs… Colonne Live dédiée ; laser seul détecté auto. |
 | **Preset ambiance 1–8** | Snapshot des états de groupes ; clic = rappel, clic droit = enregistrer. |
 | **Macro U1–U6** | Raccourcis effets (auto couleur, flash, pulse, aléatoire, fan, auto gobo) — voir `liveMacros.ts`. |
 | **Cue / Cue list** | Snapshot **univers** 512 + `fadeMs` au GO. |

@@ -6,6 +6,9 @@ import type { Fixture } from '../../types';
 import { useFixtureProfiles } from '../../hooks/useFixtureProfiles';
 import { FixtureProfilePhoto } from '../ui/FixtureProfilePhoto';
 import { resolveFixtureProfileImageUrl } from '../../utils/fixtureProfileImage';
+import { resolveFixtureChannelDefs } from '../../utils/fixtureDmxChannels';
+import { isWookie200R9ChannelFixture } from '../../utils/cameoWookie200R';
+import { WookieLaserLivePanel } from './live/WookieLaserLivePanel';
 
 interface FixturesTabProps {
   fixtures: Fixture[];
@@ -136,7 +139,15 @@ export const FixturesTab = ({
                       </div>
                     )}
 
-                    {current.type === 'Laser' && (
+                    {current.type === 'Laser' && isWookie200R9ChannelFixture(current) && (
+                      <WookieLaserLivePanel
+                        fixtures={[current]}
+                        channels={channels}
+                        updateDmx={updateDmx}
+                      />
+                    )}
+
+                    {current.type === 'Laser' && !isWookie200R9ChannelFixture(current) && (
                       <div className="space-y-4">
                         <ControlSlider label="Mode" value={channels[current.address - 1]} onChange={(v) => updateDmx(current.address - 1, v)} />
                         <ControlSlider label="Pattern" value={channels[current.address]} onChange={(v) => updateDmx(current.address, v)} />

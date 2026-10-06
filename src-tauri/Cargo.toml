@@ -1,6 +1,6 @@
 [package]
 name = "petitelunedmx-tauri"
-version = "1.8.0"
+version = "1.9.0"
 description = "Contrôleur DMX Moderne avec Tauri et React"
 authors = ["PetiteLune"]
 edition = "2021"

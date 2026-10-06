@@ -5,6 +5,7 @@ import {
   positionMemoryDisplayDots,
   recallGroupPosition,
   setFixturePanTiltOnPosition,
+  syncRecalledPositionGroupState,
 } from './groupPositionFixtures';
 import type { GroupPosition } from '../types';
 
@@ -45,6 +46,14 @@ describe('groupPositionFixtures', () => {
     ]);
   });
 
+  it('recalls linked group with one send when all heads share pan/tilt', () => {
+    const pos: GroupPosition = { x: 60, y: 70, label: 'A' };
+    const send = vi.fn();
+    recallGroupPosition(pos, [1, 2], [1, 2], 'g1', send);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith([1, 2], 60, 70, 'g1');
+  });
+
   it('recalls each fixture in per_fixture storage', () => {
     let pos: GroupPosition = { x: 127, y: 127, label: 'A' };
     pos = setFixturePanTiltOnPosition(pos, 1, 11, 22);
@@ -71,8 +80,35 @@ describe('groupPositionFixtures', () => {
       base,
       [1, 2],
       { x: 80, y: 90 },
-      () => ({ x: 80, y: 90 })
+      () => ({ x: 10, y: 20 }),
+      'linked'
     );
-    expect(out).toEqual({ x: 80, y: 90, label: 'X', perFixture: undefined });
+    expect(out).toEqual({
+      x: 80,
+      y: 90,
+      label: 'X',
+      perFixture: undefined,
+      memoryLinked: true,
+    });
+  });
+
+  it('recall linked position forces centre lié state', () => {
+    const pos: GroupPosition = {
+      x: 100,
+      y: 110,
+      label: 'P1',
+      memoryLinked: true,
+    };
+    const setLinked = vi.fn((fn: (p: Record<string, boolean>) => Record<string, boolean>) =>
+      fn({})
+    );
+    syncRecalledPositionGroupState(pos, [1, 2], 'g1', {
+      setGroupPan: vi.fn(),
+      setGroupTilt: vi.fn(),
+      setGroupMovementCenters: vi.fn(),
+      setGroupMovementCenterLinked: setLinked as never,
+    });
+    expect(setLinked).toHaveBeenCalled();
+    expect(setLinked.mock.results[0]?.value).toEqual({ g1: true });
   });
 });

@@ -15,6 +15,7 @@ import {
   Clipboard,
   Database,
   Move,
+  Sparkles,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { open } from '@tauri-apps/api/dialog';
@@ -47,6 +48,7 @@ interface PatchTabProps {
   onRenameGroup: (groupId: string, newName: string) => void;
   onToggleGroupAmbiance: (groupId: string) => void;
   onToggleGroupMovement: (groupId: string) => void;
+  onToggleGroupSpecial: (groupId: string) => void;
   onEditLibraryProfile?: (fixture: Fixture) => void;
   /** Vue segmentée dans Patch & DMX (défaut : layout historique complet). */
   mode?: PatchTabMode;
@@ -69,6 +71,7 @@ export const PatchTab = ({
   onRenameGroup,
   onToggleGroupAmbiance,
   onToggleGroupMovement,
+  onToggleGroupSpecial,
   onEditLibraryProfile,
   mode = 'combined',
   showPageHeader = true,
@@ -631,6 +634,18 @@ export const PatchTab = ({
                             <span className={`text-[8px] font-black uppercase tracking-tighter transition-colors flex items-center gap-1 ${group.isMovement ? 'text-blue-400' : 'text-slate-600 group-hover/mvt:text-slate-400'}`}>
                               <Move className="w-2.5 h-2.5" />
                               Mouvement
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer bg-amber-500/5 hover:bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/10 transition-all group/spec">
+                            <input
+                              type="checkbox"
+                              className="w-3 h-3 accent-amber-500"
+                              checked={!!group.isSpecial}
+                              onChange={() => onToggleGroupSpecial(group.id)}
+                            />
+                            <span className={`text-[8px] font-black uppercase tracking-tighter transition-colors flex items-center gap-1 ${group.isSpecial ? 'text-amber-400' : 'text-slate-600 group-hover/spec:text-slate-400'}`}>
+                              <Sparkles className="w-2.5 h-2.5" />
+                              Spéciaux
                             </span>
                           </label>
                         </div>

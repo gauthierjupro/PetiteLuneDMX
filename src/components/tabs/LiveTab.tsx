@@ -22,6 +22,7 @@ import type {
 import { runCueChannelFade } from '../../utils/cueFade';
 import { AmbianceSection } from './live/AmbianceSection';
 import { MovementSection } from './live/MovementSection';
+import { SpecialSection } from './live/SpecialSection';
 import { MasterGlobalSection } from './live/MasterGlobalSection';
 import { AutoLiveSection } from './live/AutoLiveSection';
 import { LiveAutoActiveBanner } from './live/LiveAutoActiveBanner';
@@ -37,6 +38,7 @@ import {
   getLiveAmbianceGroups,
   getLiveEmptyGroups,
   getLiveLyreDisplayGroups,
+  getLiveSpecialGroups,
   getLiveUnassignedGroups,
 } from '../../utils/liveGroups';
 import { StrobeModal } from './live/StrobeModal';
@@ -327,6 +329,10 @@ export const LiveTab = (props: LiveTabProps) => {
 
   const ambianceGroups = useMemo(
     () => getLiveAmbianceGroups(groups, fixtures),
+    [groups, fixtures]
+  );
+  const specialLiveGroups = useMemo(
+    () => getLiveSpecialGroups(groups, fixtures),
     [groups, fixtures]
   );
   const unassignedLiveGroups = useMemo(
@@ -640,6 +646,8 @@ export const LiveTab = (props: LiveTabProps) => {
       groupGobos={groupGobos}
       groupPan={groupPan}
       groupTilt={groupTilt}
+      setGroupPan={setGroupPan}
+      setGroupTilt={setGroupTilt}
       liveGroupPositions={liveGroupPositions}
       liveGroupColors={liveGroupColors}
       liveGroupGobos={liveGroupGobos}
@@ -673,6 +681,7 @@ export const LiveTab = (props: LiveTabProps) => {
       groupPositions={groupPositions}
       groupCenterPositions={groupCenterPositions}
       groupMovementCenters={groupMovementCenters}
+      setGroupMovementCenters={setGroupMovementCenters}
       groupMovementCenterLinked={groupMovementCenterLinked}
       setGroupMovementCenterLinked={setGroupMovementCenterLinked}
       fixtureCalibration={fixtureCalibration}
@@ -689,9 +698,10 @@ export const LiveTab = (props: LiveTabProps) => {
     ? 'flex h-[calc(100vh-120px)] flex-col gap-2 px-2 pb-2 overflow-hidden'
     : 'flex h-[calc(100vh-128px)] flex-col gap-3 px-3 pb-3 overflow-hidden';
   const liveGridClass = liveCompact
-    ? 'grid h-full grid-cols-1 md:grid-cols-2 gap-3 min-h-0'
-    : 'grid h-full grid-cols-1 md:grid-cols-2 gap-4 min-h-0';
+    ? 'grid h-full grid-cols-1 xl:grid-cols-3 gap-3 min-h-0'
+    : 'grid h-full grid-cols-1 xl:grid-cols-3 gap-4 min-h-0';
   const lyreGroupCount = getLiveLyreDisplayGroups(groups, fixtures).length;
+  const specialGroupCount = specialLiveGroups.length;
 
   return (
     <div className={liveShellClass} data-live-compact={liveCompact ? 'true' : undefined}>
@@ -728,20 +738,38 @@ export const LiveTab = (props: LiveTabProps) => {
         ) : (
           <div className={liveGridClass}>
             <div className="min-h-0 overflow-y-auto custom-scrollbar pr-1">{ambianceSection}</div>
-            <div className="min-h-0 flex flex-col gap-2 overflow-hidden">
-              <div className="flex shrink-0 items-center justify-between px-1">
-                <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-400">
-                  Lyres &amp; mouvements
-                  {lyreGroupCount > 0 ? (
-                    <span className="ml-2 font-mono text-blue-300/80">({lyreGroupCount})</span>
-                  ) : null}
-                </h2>
-                <span className="text-[8px] font-bold uppercase text-slate-600 md:hidden">
-                  Colonne droite — scroll si besoin
-                </span>
-              </div>
+            <div className="min-h-0 flex flex-col gap-1 overflow-hidden">
+              {!liveBeginner && (
+                <div className="flex shrink-0 items-center justify-between px-1">
+                  <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-400">
+                    Lyres &amp; mouvements
+                    {lyreGroupCount > 0 ? (
+                      <span className="ml-2 font-mono text-blue-300/80">({lyreGroupCount})</span>
+                    ) : null}
+                  </h2>
+                </div>
+              )}
               <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar pr-1">
                 {movementSection}
+              </div>
+            </div>
+            <div className="min-h-0 flex flex-col gap-2 overflow-hidden">
+              <div className="flex shrink-0 px-1">
+                <h2 className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                  Spéciaux / Divers
+                  {specialGroupCount > 0 ? (
+                    <span className="ml-2 font-mono text-amber-300/80">({specialGroupCount})</span>
+                  ) : null}
+                </h2>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar pr-1">
+                <SpecialSection
+                  specialGroups={specialLiveGroups}
+                  fixtures={fixtures}
+                  channels={channels}
+                  updateDmx={updateDmx}
+                  onGoToPatch={onGoToPatch}
+                />
               </div>
             </div>
           </div>
@@ -785,6 +813,9 @@ export const LiveTab = (props: LiveTabProps) => {
           setGroupMovements={setGroupMovements}
           groupPan={groupPan}
           groupTilt={groupTilt}
+          setGroupPan={setGroupPan}
+          setGroupTilt={setGroupTilt}
+          setGroupMovementCenters={setGroupMovementCenters}
           sendMovement={sendMovement}
           groupPositions={groupPositions}
           setGroupPositions={setGroupPositions}

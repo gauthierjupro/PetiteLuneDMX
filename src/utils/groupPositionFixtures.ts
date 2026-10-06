@@ -1,3 +1,4 @@
+import type { Dispatch, SetStateAction } from 'react';
 import type {
   CalibrationSettings,
   Fixture,
@@ -125,24 +126,16 @@ export function captureGroupPositionFromLive(
   position: GroupPosition,
   movingHeadIds: number[],
   linkedPanTilt: FixturePanTiltPoint,
-  readFixturePanTilt: (fixtureId: number) => FixturePanTiltPoint
+  readFixturePanTilt: (fixtureId: number) => FixturePanTiltPoint,
+  memoryMode: GroupPositionMemoryMode = 'linked'
 ): GroupPosition {
-  if (movingHeadIds.length <= 1) {
+  if (movingHeadIds.length <= 1 || memoryMode === 'linked') {
     return {
       ...position,
       x: linkedPanTilt.x,
       y: linkedPanTilt.y,
       perFixture: undefined,
-    };
-  }
-  const pts = movingHeadIds.map((id) => readFixturePanTilt(id));
-  const allSame = pts.every((p) => p.x === pts[0].x && p.y === pts[0].y);
-  if (allSame) {
-    return {
-      ...position,
-      x: pts[0].x,
-      y: pts[0].y,
-      perFixture: undefined,
+      memoryLinked: true,
     };
   }
   let next: GroupPosition = {
@@ -150,12 +143,23 @@ export function captureGroupPositionFromLive(
     x: linkedPanTilt.x,
     y: linkedPanTilt.y,
     perFixture: {},
+    memoryLinked: false,
   };
   for (const id of movingHeadIds) {
     const pt = readFixturePanTilt(id);
     next = setFixturePanTiltOnPosition(next, id, pt.x, pt.y);
   }
   return next;
+}
+
+/** Positions mémorisées en centre lié (y compris anciennes données sans flag). */
+export function isLinkedMemoryPosition(
+  position: GroupPosition,
+  movingHeadIds: number[]
+): boolean {
+  if (position.memoryLinked === false) return false;
+  if (position.memoryLinked === true) return true;
+  return !positionHasDistinctPerFixture(position, movingHeadIds);
 }
 
 export type SendMovementFn = (
@@ -178,8 +182,67 @@ export function recallGroupPosition(
     sendMovement(fixtureIds, position.x, position.y, groupId);
     return;
   }
+  const linked = isLinkedMemoryPosition(position, movingHeadIds);
+  if (linked) {
+    sendMovement(fixtureIds, position.x, position.y, groupId);
+    return;
+  }
+  const distinct = positionHasDistinctPerFixture(position, movingHeadIds);
+  if (!distinct) {
+    const { x, y } = getFixturePanTiltFromPosition(position, movingHeadIds[0]!);
+    sendMovement(fixtureIds, x, y, groupId);
+    return;
+  }
   for (const id of movingHeadIds) {
     const { x, y } = getFixturePanTiltFromPosition(position, id);
     sendMovement(fixtureIds, x, y, groupId, { onlyFixtureId: id });
   }
+}
+
+export type RecalledPositionStateSync = {
+  setGroupPan: Dispatch<SetStateAction<Record<string, number>>>;
+  setGroupTilt: Dispatch<SetStateAction<Record<string, number>>>;
+  setGroupMovementCenters: Dispatch<
+    SetStateAction<Record<string, Record<string, { x: number; y: number }>>>
+  >;
+  setGroupMovementCenterLinked?: Dispatch<SetStateAction<Record<string, boolean>>>;
+};
+
+/** Aligne pan/tilt Live et centres de forme avec une position mémorisée rappelée. */
+export function syncRecalledPositionGroupState(
+  position: GroupPosition,
+  movingHeadIds: number[],
+  groupId: string,
+  sync: RecalledPositionStateSync
+): void {
+  sync.setGroupPan((prev) => ({ ...prev, [groupId]: position.x }));
+  sync.setGroupTilt((prev) => ({ ...prev, [groupId]: position.y }));
+
+  if (movingHeadIds.length === 0) return;
+
+  const linked = isLinkedMemoryPosition(position, movingHeadIds);
+
+  if (linked) {
+    const groupMap: Record<string, { x: number; y: number }> = {};
+    for (const id of movingHeadIds) {
+      groupMap[fixtureKey(id)] = { x: position.x, y: position.y };
+    }
+    sync.setGroupMovementCenters((prev) => ({
+      ...prev,
+      [groupId]: { ...(prev[groupId] ?? {}), ...groupMap },
+    }));
+    sync.setGroupMovementCenterLinked?.((prev) => ({ ...prev, [groupId]: true }));
+    return;
+  }
+
+  const groupMap: Record<string, { x: number; y: number }> = {};
+  for (const id of movingHeadIds) {
+    const pt = getFixturePanTiltFromPosition(position, id);
+    groupMap[fixtureKey(id)] = { x: pt.x, y: pt.y };
+  }
+  sync.setGroupMovementCenters((prev) => ({
+    ...prev,
+    [groupId]: { ...(prev[groupId] ?? {}), ...groupMap },
+  }));
+  sync.setGroupMovementCenterLinked?.((prev) => ({ ...prev, [groupId]: false }));
 }

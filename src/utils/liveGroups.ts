@@ -30,6 +30,7 @@ export function isLyreOnlyGroup(group: Group, fixtures: Fixture[]): boolean {
  */
 export function isLiveAmbianceGroup(group: Group, fixtures: Fixture[]): boolean {
   if (group.fixtureIds.length === 0) return false;
+  if (group.isSpecial === true) return false;
   if (group.isMovement === true && group.isAmbiance !== true) return false;
   if (group.isAmbiance === true) return true;
   if (isLyreOnlyGroup(group, fixtures)) return false;
@@ -49,6 +50,7 @@ export function getLiveAmbianceGroups(groups: Group[], fixtures: Fixture[]): Gro
  */
 export function isLiveMovementGroup(group: Group, fixtures: Fixture[]): boolean {
   if (group.fixtureIds.length === 0) return false;
+  if (group.isSpecial === true) return false;
   if (group.isAmbiance === true && group.isMovement !== true) return false;
   if (!groupHasMovementCapable(group, fixtures)) return false;
   if (group.isMovement === true) return true;
@@ -97,12 +99,42 @@ export function getLiveLyreDisplayGroups(groups: Group[], fixtures: Fixture[]): 
   return [...getLiveLyreGroups(groups, fixtures), ...buildSyntheticLyreGroups(groups, fixtures)];
 }
 
-/** Groupes patchés mais absents des deux colonnes Live (Laser, Effect seul, etc.). */
+function groupHasSpecialKindFixture(group: Group, fixtures: Fixture[]): boolean {
+  return group.fixtureIds.some((id) => {
+    const f = fixtureById(fixtures, id);
+    if (!f) return false;
+    return f.type === 'Laser' || f.type === 'Effect' || f.type === 'Other';
+  });
+}
+
+/**
+ * Colonne Spéciaux (Divers) :
+ * - case « Spéciaux » au Patch, ou
+ * - repli : laser / effect / autre hors colonnes Ambiance et Mouvements.
+ */
+export function isLiveSpecialGroup(group: Group, fixtures: Fixture[]): boolean {
+  if (group.fixtureIds.length === 0) return false;
+  if (group.isSpecial === true) return true;
+  if (isLiveAmbianceGroup(group, fixtures)) return false;
+  if (isLiveMovementGroup(group, fixtures)) return false;
+  return groupHasSpecialKindFixture(group, fixtures);
+}
+
+export function getLiveSpecialGroups(groups: Group[], fixtures: Fixture[]): Group[] {
+  return groups.filter((g) => isLiveSpecialGroup(g, fixtures));
+}
+
+/** Groupes patchés mais absents des colonnes Live visibles. */
 export function getLiveUnassignedGroups(groups: Group[], fixtures: Fixture[]): Group[] {
   const ambIds = new Set(getLiveAmbianceGroups(groups, fixtures).map((g) => g.id));
   const lyrIds = new Set(getLiveLyreGroups(groups, fixtures).map((g) => g.id));
+  const specIds = new Set(getLiveSpecialGroups(groups, fixtures).map((g) => g.id));
   return groups.filter(
-    (g) => g.fixtureIds.length > 0 && !ambIds.has(g.id) && !lyrIds.has(g.id)
+    (g) =>
+      g.fixtureIds.length > 0 &&
+      !ambIds.has(g.id) &&
+      !lyrIds.has(g.id) &&
+      !specIds.has(g.id)
   );
 }
 

@@ -29,7 +29,7 @@ export function usePatchStore() {
     const id = name.toLowerCase().replace(/\s+/g, '_');
     setGroups((prev) => [
       ...prev,
-      { id, name, fixtureIds: [], isAmbiance: false, isMovement: false },
+      { id, name, fixtureIds: [], isAmbiance: false, isMovement: false, isSpecial: false },
     ]);
   }, [setGroups]);
 
@@ -55,6 +55,14 @@ export function usePatchStore() {
     setGroups((prev) =>
       prev.map((g) =>
         g.id === groupId ? { ...g, isMovement: !g.isMovement } : g
+      )
+    );
+  }, [setGroups]);
+
+  const handleToggleGroupSpecial = useCallback((groupId: string) => {
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id === groupId ? { ...g, isSpecial: !g.isSpecial } : g
       )
     );
   }, [setGroups]);
@@ -88,6 +96,7 @@ export function usePatchStore() {
     handleUpdateGroupFixtures,
     handleToggleGroupAmbiance,
     handleToggleGroupMovement,
+    handleToggleGroupSpecial,
     handleUpdateAddress,
     handleAddFixture,
     handleDeleteFixture,

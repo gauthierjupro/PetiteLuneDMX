@@ -36,11 +36,17 @@ import {
   fixtureIsMovementCapable,
 } from '../../../utils/autoLiveGroups';
 import {
+  isWookie200R9OnlyGroup,
+  wookie200R9FixturesInGroup,
+} from '../../../utils/cameoWookie200R';
+import { WookieLaserLivePanel } from './WookieLaserLivePanel';
+import {
   getMovingHeadIds,
   positionMemoryDisplayDots,
   positionMemoryPerFixtureVisual,
   readLogicalPanTiltFromChannels,
   recallGroupPosition,
+  syncRecalledPositionGroupState,
 } from '../../../utils/groupPositionFixtures';
 import { FixedPositionMemoryButton } from './FixedPositionMemoryButton';
 import { MovementPresetsAndSliders } from './MovementPresetsAndSliders';
@@ -80,6 +86,8 @@ interface MovementSectionProps {
   groupGobos: Record<string, number>;
   groupPan: Record<string, number>;
   groupTilt: Record<string, number>;
+  setGroupPan: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  setGroupTilt: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   liveGroupPositions: Record<string, LivePanTilt>;
   liveGroupColors: Record<string, number>;
   liveGroupGobos: Record<string, number>;
@@ -112,6 +120,9 @@ interface MovementSectionProps {
   groupPositions: Record<string, GroupPosition[]>;
   groupCenterPositions: Record<string, GroupPosition>;
   groupMovementCenters: Record<string, Record<string, { x: number; y: number }>>;
+  setGroupMovementCenters: React.Dispatch<
+    React.SetStateAction<Record<string, Record<string, { x: number; y: number }>>>
+  >;
   groupMovementCenterLinked: Record<string, boolean>;
   setGroupMovementCenterLinked: React.Dispatch<
     React.SetStateAction<Record<string, boolean>>
@@ -140,6 +151,8 @@ export const MovementSection = ({
   groupGobos,
   groupPan,
   groupTilt,
+  setGroupPan,
+  setGroupTilt,
   liveGroupPositions,
   liveGroupColors,
   liveGroupGobos,
@@ -157,6 +170,7 @@ export const MovementSection = ({
   groupPositions,
   groupCenterPositions,
   groupMovementCenters,
+  setGroupMovementCenters,
   groupMovementCenterLinked,
   setGroupMovementCenterLinked,
   fixtureCalibration,
@@ -180,6 +194,21 @@ export const MovementSection = ({
   const isLyreControllable = (id: number) => {
     const f = fixtures.find((fx) => fx.id === id);
     return f != null && fixtureIsLyreControllable(f);
+  };
+
+  const recallFixedPositionForGroup = (
+    groupId: string,
+    fixtureIds: number[],
+    position: GroupPosition
+  ) => {
+    const headIds = getMovingHeadIds(fixtureIds, isMovementTarget);
+    recallGroupPosition(position, headIds, fixtureIds, groupId, sendMovement);
+    syncRecalledPositionGroupState(position, headIds, groupId, {
+      setGroupPan,
+      setGroupTilt,
+      setGroupMovementCenters,
+      setGroupMovementCenterLinked,
+    });
   };
 
   const applyQuickMovement = (
@@ -285,20 +314,42 @@ export const MovementSection = ({
     />
   );
 
-  const lyresHeader = beginnerMode ? (
+  const calibrateButton = (
     <button
       type="button"
-      onClick={() => setLyresExpanded((v) => !v)}
-      className="flex w-full items-center justify-between gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-left hover:bg-blue-500/15 transition-colors"
+      onClick={onOpenCalibration}
+      className="flex items-center gap-1.5 shrink-0 rounded-lg border border-white/10 bg-slate-800/70 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-wider text-slate-400 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors active:scale-95"
+      title="Calibration pan/tilt des lyres"
     >
-      <span className="text-[10px] font-black uppercase tracking-widest text-blue-300 flex items-center gap-2">
-        <Move className="h-3.5 w-3.5" />
-        Lyres &amp; mouvements (optionnel)
-      </span>
-      <ChevronDown
-        className={`h-4 w-4 text-blue-400/80 transition-transform ${lyresExpanded ? 'rotate-180' : ''}`}
-      />
+      <Settings2 className="w-3 h-3" />
+      Calibrer
     </button>
+  );
+
+  const lyreCountLabel =
+    movingHeadGroups.length > 0 ? (
+      <span className="font-mono text-blue-300/70 normal-case tracking-normal">
+        ({movingHeadGroups.length})
+      </span>
+    ) : null;
+
+  const lyresHeader = beginnerMode ? (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setLyresExpanded((v) => !v)}
+        className="flex flex-1 min-w-0 items-center justify-between gap-2 rounded-lg border border-blue-500/25 bg-blue-500/10 px-2.5 py-1.5 text-left hover:bg-blue-500/15 transition-colors"
+      >
+        <span className="text-[10px] font-black uppercase tracking-widest text-blue-300 flex items-center gap-1.5 truncate">
+          <Move className="h-3 w-3 shrink-0" />
+          Lyres · optionnel {lyreCountLabel}
+        </span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 shrink-0 text-blue-400/80 transition-transform ${lyresExpanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {lyresExpanded ? calibrateButton : null}
+    </div>
   ) : null;
 
   if (movingHeadGroups.length === 0) {
@@ -311,40 +362,20 @@ export const MovementSection = ({
       );
     }
     return (
-      <section className="space-y-4 h-full flex flex-col">
-        <h2 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
-          <Move className="w-3.5 h-3.5" /> Lyres
-        </h2>
+      <section className="h-full flex flex-col">
+        <div className="flex justify-end pb-2">{calibrateButton}</div>
         {emptyLyres}
       </section>
     );
   }
 
   const lyresBody = (
-    <section className="space-y-8">
-      <div className="flex items-center justify-between px-2">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20 shadow-lg shadow-blue-500/5">
-            <Move className="w-5 h-5 text-blue-400" />
-          </div>
-          <div>
-            <h2 className="text-xl font-black text-white tracking-tighter uppercase italic">
-              Mouvements &amp; formes
-            </h2>
-            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-0.5">Contrôle des lyres & Calibration</p>
-          </div>
-        </div>
-
-        <button 
-          onClick={onOpenCalibration}
-          className="flex items-center gap-3 px-6 py-3 bg-slate-800/50 hover:bg-slate-700/50 border border-white/5 rounded-2xl text-[10px] font-black text-slate-400 uppercase tracking-widest transition-all hover:text-cyan-400 hover:border-cyan-500/30 active:scale-95 group"
-        >
-          <Settings2 className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-500" />
-          Paramétrage des lyres
-        </button>
-      </div>
+    <section className="space-y-3">
+      {!beginnerMode && (
+        <div className="flex justify-end px-0.5">{calibrateButton}</div>
+      )}
       {orphanLyreGroups.length > 0 && (
-        <p className="text-[10px] text-amber-400/90 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 leading-relaxed mx-2">
+        <p className="text-[10px] text-amber-400/90 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 leading-relaxed">
           <span className="font-black uppercase tracking-wide">Scans / lyres hors groupe</span>
           {' — '}
           Les cartes ci-dessous (ex. Dynamo) ne sont pas dans un groupe Patch. Pour les sauvegarder
@@ -366,6 +397,8 @@ export const MovementSection = ({
             movement: groupMovements[group.id],
             motionLive: !!liveGroupPositions[group.id],
           });
+          const wookieFixtures = wookie200R9FixturesInGroup(group.fixtureIds, fixtures);
+          const wookieLaserGroup = isWookie200R9OnlyGroup(group.fixtureIds, fixtures);
 
           return (
             <div key={group.id} className="bg-[#111317] border-2 border-blue-500/20 rounded-[2rem] p-5 space-y-5 shadow-[0_0_40px_rgba(0,0,0,0.5),0_0_20px_rgba(59,130,246,0.1)] relative overflow-hidden group/card">
@@ -376,6 +409,11 @@ export const MovementSection = ({
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-xs font-black uppercase tracking-widest text-slate-300">{group.name}</h3>
                     <LiveMovingHeadKindBadge group={group} fixtures={fixtures} />
+                    {wookieFixtures.length > 0 && (
+                      <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded border border-rose-500/40 bg-rose-500/15 text-rose-300 shrink-0">
+                        Laser
+                      </span>
+                    )}
                     {onOpenCalibrationForGroup && (
                       <button
                         type="button"
@@ -417,7 +455,17 @@ export const MovementSection = ({
               </div>
 
               <div className="flex flex-wrap gap-6 relative z-10">
-                {/* Bloc Contrôles (Lumière, Couleurs, Gobos, Modes) */}
+                {wookieFixtures.length > 0 && (
+                  <div className="w-full">
+                    <WookieLaserLivePanel
+                      fixtures={wookieFixtures}
+                      channels={channels}
+                      updateDmx={updateDmx}
+                    />
+                  </div>
+                )}
+
+                {!wookieLaserGroup && (
                 <div className="flex flex-wrap gap-4 min-w-fit">
                   <div className="space-y-3 shrink-0">
                     <div className="flex items-center justify-between border-l-2 border-blue-500 pl-2">
@@ -564,8 +612,9 @@ export const MovementSection = ({
                     </div>
                   </div>
                 </div>
+                )}
 
-                {/* Bloc Mouvement (PAD + presets / réglages) */}
+                {!wookieLaserGroup && (
                 <div className="flex flex-col gap-2 min-w-[320px] max-w-[480px] border-l border-white/5 pl-4">
                   <div className="flex items-center justify-between pr-1">
                     <div className="flex items-center border-l-2 border-cyan-500 pl-2">
@@ -659,7 +708,9 @@ export const MovementSection = ({
                   </div>
 
                 </div>
+                )}
 
+                {!wookieLaserGroup && (
                 <div className="flex-1 min-w-[200px] border-l border-white/5 pl-4">
                   {(() => {
                     const headIds = getMovingHeadIds(
@@ -698,12 +749,10 @@ export const MovementSection = ({
                                   label={centerPos.label}
                                   variant="center"
                                   onClick={() => {
-                                    recallGroupPosition(
-                                      centerPos,
-                                      headIds,
-                                      group.fixtureIds,
+                                    recallFixedPositionForGroup(
                                       group.id,
-                                      sendMovement
+                                      group.fixtureIds,
+                                      centerPos
                                     );
                                     setGroupMovements((prev) => ({
                                       ...prev,
@@ -725,12 +774,10 @@ export const MovementSection = ({
                                       )}
                                       label={pos.label || `${idx + 1}`}
                                       onClick={() => {
-                                        recallGroupPosition(
-                                          pos,
-                                          headIds,
-                                          group.fixtureIds,
+                                        recallFixedPositionForGroup(
                                           group.id,
-                                          sendMovement
+                                          group.fixtureIds,
+                                          pos
                                         );
                                         setGroupMovements(
                                           (prev: Record<string, GroupMovement>) => ({
@@ -758,6 +805,7 @@ export const MovementSection = ({
                     );
                   })()}
                 </div>
+                )}
               </div>
             </div>
           );

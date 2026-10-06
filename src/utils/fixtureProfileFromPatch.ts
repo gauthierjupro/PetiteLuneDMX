@@ -1,4 +1,9 @@
 import type { ChannelDef, ChannelFunctionType, Fixture, FixtureProfile } from '../types';
+import {
+  isCameoWookie200RFixture,
+  wookie200R3ChannelDefs,
+  wookie200R9ChannelDefs,
+} from './cameoWookie200R';
 import { findProfileForFixture } from './fixtureProfileImage';
 
 export const FIXTURE_PROFILE_DRAFT_EVENT = 'pldmx:fixture_profile_draft';
@@ -113,6 +118,11 @@ function defaultChannelDefs(fixture: Fixture): ChannelDef[] {
   if (kind === 'Moving Head') return movingHeadTemplate(n);
   if (kind === 'RGB') return rgbTemplate(n);
   if (kind === 'Effect') return effectTemplate(n);
+
+  if (isCameoWookie200RFixture(fixture.manufacturer, fixture.model)) {
+    if (n === 3) return wookie200R3ChannelDefs();
+    if (n === 9) return wookie200R9ChannelDefs();
+  }
 
   return Array.from({ length: n }, (_, i) => ({
     index: i + 1,

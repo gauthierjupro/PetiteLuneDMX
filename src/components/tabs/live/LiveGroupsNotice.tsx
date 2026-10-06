@@ -23,8 +23,9 @@ export function LiveGroupsNotice({
         <p className="text-[11px] text-slate-400 leading-relaxed">
           <span className="text-slate-300">{unassigned.map((g) => g.name).join(', ')}</span>
           {' — '}
-          cochez « Mouvement » au Patch pour les lasers (ou « Ambiance » pour PAR / Xtrem).
-          Les lyres et scans apparaissent automatiquement en colonne Mouvements.
+          cochez « Spéciaux » pour un groupe Divers (laser, gradateur…), « Ambiance » pour PAR /
+          Xtrem, ou « Mouvement » pour lyres. Les lyres orphelines apparaissent seules en Mouvements ;
+          un laser seul apparaît en Spéciaux sans case cochée.
         </p>
       )}
       {emptyGroups.length > 0 && (
